@@ -137,7 +137,7 @@ void task3(int argc, char * argv[])
 		double duration = (double)(endTime.QuadPart - startTime.QuadPart) / frequency.QuadPart;
 
 		sum *= (h / 6.0);
-		printf("Simpsons Rule for [%lf, %lf] with %d subintervals\n\tyielded the approximation %lf\n\tand took %.9f milliseconds!", a, b, n, sum, duration);
+		printf("Simpsons Rule for [%lf, %lf] with %d subintervals\n\tyielded the approximation %lf\n\tand took %.9f seconds(maybe)!", a, b, n, sum, duration);
 	}
 
 	MPI_Finalize();
