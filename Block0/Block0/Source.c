@@ -1,8 +1,6 @@
 #include "mpi.h"
 #include "stdio.h"
 #include "stdlib.h"
-#include "time.h"
-#include <windows.h>
 
 // Task 1.
 // For each proccess, determenate it`s number and prints out proper output
@@ -70,9 +68,8 @@ void task3(int argc, char * argv[])
 	double a, b, h;
 	double procSum, sum;
 	double procInterval; // The subintervals size(number of calculations) for every process.
-	int n;
-	LARGE_INTEGER frequency;
-	LARGE_INTEGER startTime;
+	int n; 
+	double t1, t2; // Time measurement
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &processesCount);
@@ -87,8 +84,7 @@ void task3(int argc, char * argv[])
 		fflush(stdout);
 		fscanf(stdin, "%d", &n);
 
-		QueryPerformanceFrequency(&frequency);
-		QueryPerformanceCounter(&startTime);
+		t1 = MPI_Wtime();
 	}
 
 	// Broadcast a, b and n
@@ -129,15 +125,16 @@ void task3(int argc, char * argv[])
 	// Reduce all particial sums
 	MPI_Reduce(&procSum, &sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
+	// Synchonization point, no need
+	// MPI_COMM_WORLD_Barrier();
+
 	// Print proper output from the calculations.
 	if (rank == 0)
 	{
-		LARGE_INTEGER endTime;
-		QueryPerformanceCounter(&endTime);
-		double duration = (double)(endTime.QuadPart - startTime.QuadPart) / frequency.QuadPart;
+		t2 = MPI_Wtime();
 
 		sum *= (h / 6.0);
-		printf("Simpsons Rule for [%lf, %lf] with %d subintervals\n\tyielded the approximation %lf\n\tand took %.9f seconds(maybe)!", a, b, n, sum, duration);
+		printf("Simpsons Rule for [%lf, %lf] with %d subintervals\n\tyielded the approximation %lf\n\tand took %.9f seconds(maybe)!", a, b, n, sum, t2 - t1);
 	}
 
 	MPI_Finalize();
