@@ -68,7 +68,8 @@ void task3(int argc, char * argv[])
 	double a, b, h;
 	double procSum, sum;
 	double procInterval; // The subintervals size(number of calculations) for every process.
-	int n; 
+	int n, position;
+	char buffer[100]; // Buffer and position for packing 'a', 'b' and 'n' data and broadcast them.
 	double t1, t2; // Time measurement
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -85,12 +86,33 @@ void task3(int argc, char * argv[])
 		fscanf(stdin, "%d", &n);
 
 		t1 = MPI_Wtime();
+		
+		// Pack the data
+		position = 0; // Position starts at the beginning of the @buffer.
+		MPI_Pack(&a, 1, MPI_DOUBLE, buffer, 42, &position, MPI_COMM_WORLD);
+		// The position has been incremented by sizeof(float) bytes (from MPI_Pack)
+		MPI_Pack(&b, 1, MPI_DOUBLE, buffer, 42, &position, MPI_COMM_WORLD);
+		MPI_Pack(&n, 1, MPI_INT, buffer, 42, &position, MPI_COMM_WORLD);
+
+		// Now broadcast
+		MPI_Bcast(buffer, 42, MPI_PACKED, 0, MPI_COMM_WORLD);
+	}
+	else
+	{
+		MPI_Bcast(buffer, 42, MPI_PACKED, 0, MPI_COMM_WORLD);
+
+		// Let's unpack the buffer.
+		position = 0;
+		MPI_Unpack(buffer, 42, &position, &a, 1, MPI_DOUBLE, MPI_COMM_WORLD); // Once again the position is auto increment by sizeof(float) bytes.
+		MPI_Unpack(buffer, 42, &position, &b, 1, MPI_DOUBLE, MPI_COMM_WORLD);
+		MPI_Unpack(buffer, 42, &position, &n, 1, MPI_INT, MPI_COMM_WORLD);
 	}
 
-	// Broadcast a, b and n
-	MPI_Bcast(&a, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&b, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&n, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	// Broadcast a, b and n. They are 2 doubles and one integer. 
+	// I do it once so it`s better to PACK them(not to make MPI struct) and send them with only one broadcast!
+	//MPI_Bcast(&a, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	//MPI_Bcast(&b, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	//MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
 	// Calculate h and subinterval`s size.
 	h = (b - a) / (double)n;
