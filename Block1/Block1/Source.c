@@ -143,7 +143,7 @@ void fillDataOfOneDimColumnsArray(int rank, int p, double * data, const struct M
 
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
 // @M is the number of rows and @N is the number of columns.
-void distributeColumns(const struct Matrix* matrix)
+void distributeColumns(const struct Matrix* matrix, int M, int N)
 {
 	int rank, p; // rank is process id and p is the count of all processes.
 	double * columnsData = NULL;
@@ -155,7 +155,7 @@ void distributeColumns(const struct Matrix* matrix)
 	// Each processor has to allocate memory for it`s columns.
 	// I will store them in one array - first column after that second and so on.
 	// Another approach is like 2D array, but we will see which one is better. (iteration is not so good)
-	columnsData = allocateOneDimArrayForMultipleColsOfGivenProc(rank, p, &dataCount, matrix->M, matrix->N);
+	columnsData = allocateOneDimArrayForMultipleColsOfGivenProc(rank, p, &dataCount, M, N);
 
 	//printf("Data count of proc %d = %d\n", rank, dataCount);
 	// I chose the 0 processor to distribute the matrix
@@ -163,6 +163,18 @@ void distributeColumns(const struct Matrix* matrix)
 	{
 		// For rank 0 I have all the data so simply write it.
 		fillDataOfOneDimColumnsArray(rank, p, columnsData, matrix);
+	
+		
+		/*printf("Proc 0 has\n");
+		
+		int j;
+		for (j = 0; j < dataCount; ++j)
+		{
+			printf("%.3f ", columnsData[j]);
+		}
+		printf("\n");*/
+
+
 
 		double * tempColumnsData = NULL;
 		int tempDataCount = 0;
@@ -178,16 +190,16 @@ void distributeColumns(const struct Matrix* matrix)
 			//if (!(tempColumnsData && ((i - 1 < matrix->N % p && i < matrix->N % p) || (i - 1 >= matrix->N % p && i >= matrix->N % p))))
 			{
 				free(tempColumnsData); // Free the memory
-				tempColumnsData = allocateOneDimArrayForMultipleColsOfGivenProc(i, p, &tempDataCount, matrix->M, matrix->N); // Allocate the new array
+				tempColumnsData = allocateOneDimArrayForMultipleColsOfGivenProc(i, p, &tempDataCount, M, N); // Allocate the new array
 			}
 
 			fillDataOfOneDimColumnsArray(i, p, tempColumnsData, matrix); // Fill the data
 			
-			int j;
+			/*int j;
 			for (j = 0; j < tempDataCount; ++j)
 			{
-			//	printf("%.3f ", tempColumnsData[j]);
-			}
+				printf("%.3f ", tempColumnsData[j]);
+			}*/
 
 			MPI_Send(tempColumnsData, tempDataCount, MPI_DOUBLE, i, 42, MPI_COMM_WORLD);
 		}
@@ -196,13 +208,14 @@ void distributeColumns(const struct Matrix* matrix)
 	}
 	else // Receive the data from process 0.
 	{
-		//printf("Receive %d\n", dataCount);
+		//printf("Receive %d in proc %d\n", dataCount, rank);
 		MPI_Recv(columnsData, dataCount, MPI_DOUBLE, 0, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-		int j;
+	/*	int j;
 		for (j = 0; j < dataCount; ++j)
 		{
 			printf("%.3f ", columnsData[j]);
 		}
+		printf("\n");*/
 	}
 }
 
@@ -215,6 +228,9 @@ int main(int argc, char* argv[])
 
 	int rank, processesCount;
 	struct Matrix matrix;
+	// I make the number of rows and cols to be in all processors, other way is to broadcast them
+	int ROWS = 4;
+	int COLS = 8;
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &processesCount);
@@ -222,25 +238,24 @@ int main(int argc, char* argv[])
 	/* Create the matrix in proc 0 */
 	// It`s C , so I will keep the matrix 'transposed', because I want to send whole columns,
 	// So I will keep the matrix as rows of columns(first row is the first column, second row is the second column and so on).
-//	if (rank == 0)
+	if (rank == 0)
 	{
 		// Generate matrix 3x5, but transposed...
-		if (matrixAllocate(&matrix, 5, 3)) // NOTE: here I give transposed matrix, so swaped number of rows and cols.
+		if (matrixAllocate(&matrix, COLS, ROWS)) // NOTE: here I give transposed matrix, so swaped number of rows and cols.
 			return -1;
 		matrixSetDefaultValues(&matrix);
 		//matrixPrint(&matrix);
-		if (rank == 0)
-			matrixPrintTransposed(&matrix);
+		matrixPrintTransposed(&matrix);
 
 
 	}
-	// Now lets distribute the matrix.(which is stored by columns)
-	distributeColumns(&matrix);
+	// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
+	distributeColumns(&matrix, COLS, ROWS);
 		
 	/* TO DO synchronize if needed.*/
 	if (rank == 0)
 	{
-		//matrixFree(&matrix);
+		matrixFree(&matrix);
 	}
 
 	MPI_Finalize();
