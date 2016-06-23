@@ -103,18 +103,24 @@ void matrixPrintTransposed(const struct Matrix * matrix)
 
 /* END of matrix stuff */
 
+int getNumberOfElementsInProcColumns(int rank, int p, int M, int N)
+{
+	// The matrix is transposed, so M rows , each row represent a column
+	// j-th row is in @rank processor if rank === j mod p
+	int dataCount = 0;
+	dataCount = M / p;
+	// If there are more columns(N != q.p ; q some pos. number)
+	if (rank < M % p)
+		++dataCount;
+	// Now dataCount has the number of columns, multiply it with N to get the number of cells.
+	dataCount *= N;
 
+}
 
 double * allocateOneDimArrayForMultipleColsOfGivenProc(int rank, int p, int * dataCount, int M, int N)
 {
 	double * data = NULL;
-	// The matrix is transposed...
-	*dataCount = M / p;
-	// If there are more columns(N != q.p ; q some pos. number)
-	if (rank < M % p)
-		++(*dataCount);
-	// Now dataCount has the number of columns, multiply it with N to get the number of cells.
-	*dataCount *= N;
+	*dataCount = getNumberOfElementsInProcColumns(rank, p, M, N);
 
 	data = (double*)malloc(*dataCount * sizeof(double));
 	// if (!columnsData)
@@ -143,11 +149,10 @@ void fillDataOfOneDimColumnsArray(int rank, int p, double * data, const struct M
 
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
 // @M is the number of rows and @N is the number of columns.
-void distributeColumns(const struct Matrix* matrix, int M, int N)
+// Returns pointer to the new allocated memory for the columns...
+double * distributeColumns(const struct Matrix* matrix, int M, int N, int * dataCount)
 {
 	int rank, p; // rank is process id and p is the count of all processes.
-	double * columnsData = NULL;
-	int dataCount = 0; // Number of cells in all columns.
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &p);
@@ -155,7 +160,7 @@ void distributeColumns(const struct Matrix* matrix, int M, int N)
 	// Each processor has to allocate memory for it`s columns.
 	// I will store them in one array - first column after that second and so on.
 	// Another approach is like 2D array, but we will see which one is better. (iteration is not so good)
-	columnsData = allocateOneDimArrayForMultipleColsOfGivenProc(rank, p, &dataCount, M, N);
+	double * columnsData = allocateOneDimArrayForMultipleColsOfGivenProc(rank, p, dataCount, M, N);
 
 	//printf("Data count of proc %d = %d\n", rank, dataCount);
 	// I chose the 0 processor to distribute the matrix
@@ -208,27 +213,78 @@ void distributeColumns(const struct Matrix* matrix, int M, int N)
 	}
 	else // Receive the data from process 0.
 	{
-		//printf("Receive %d in proc %d\n", dataCount, rank);
-		MPI_Recv(columnsData, dataCount, MPI_DOUBLE, 0, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-	/*	int j;
-		for (j = 0; j < dataCount; ++j)
+		//printf("Receive %d in proc %d\n", *dataCount, rank);
+		MPI_Recv(columnsData, *dataCount, MPI_DOUBLE, 0, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+		/*int j;
+		for (j = 0; j < *dataCount; ++j)
 		{
 			printf("%.3f ", columnsData[j]);
 		}
 		printf("\n");*/
 	}
+
+	return columnsData;
 }
 
 // Collects the columns of all processors and processor 0 writes it to the given matrix.
+void selectColumns(const struct Matrix* matrix, int M, int N, double * columnsData, int * dataCount)
+{
+	int rank, p; // rank is process id and p is the count of all processes.
 
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &p);
+
+	if (rank == 0)
+	{
+		// Create temp buffer to get the data from all processors and to fill the matrix.
+		double * tempBuffer = (double*)malloc(*dataCount * sizeof(double));
+		double * pTempBuffer;
+		int tempReveivedSize;
+		//printf("Data count %d\n", *dataCount);
+		// Write own data to the matrix.
+		for (int i = 0; i < p; ++i)
+		{
+			if (i == 0)
+			{
+				pTempBuffer = columnsData;
+			}
+			else
+			{
+				tempReveivedSize = getNumberOfElementsInProcColumns(i, p, M, N);
+			//	printf("Tries to recv %d from %d\n", tempReveivedSize, i);
+				MPI_Recv(tempBuffer, tempReveivedSize, MPI_DOUBLE, i, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				pTempBuffer = tempBuffer;
+			}
+			int k, j;
+			for (k = i; k < M; k += p) // Write the data to all k rows where k belongs to i-th processor
+			{
+				for (j = 0; j < N; ++j) // Write all data.
+				{
+					matrix->matrixData[k][j] = *pTempBuffer;
+					++pTempBuffer;
+				}
+			}
+		}
+
+		free(tempBuffer);
+	}
+	else
+	{
+	//	printf("%d tries to send %d\n", rank, *dataCount);
+		MPI_Send(columnsData, *dataCount, MPI_DOUBLE, 0, 42, MPI_COMM_WORLD);
+	}
+}
 
 int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
-
+	// TODO struct for process data...
 	int rank, processesCount;
 	struct Matrix matrix;
-	// I make the number of rows and cols to be in all processors, other way is to broadcast them
+	double * columnsData = NULL;
+	int dataCount = 0; // Number of cells in all columns.
+	// I make the number of rows and cols to be in all processors, other way is to broadcast them.
+	// TODO Broadcast them!
 	int ROWS = 4;
 	int COLS = 8;
 
@@ -242,19 +298,30 @@ int main(int argc, char* argv[])
 	{
 		// Generate matrix 3x5, but transposed...
 		if (matrixAllocate(&matrix, COLS, ROWS)) // NOTE: here I give transposed matrix, so swaped number of rows and cols.
-			return -1;
+			return -1; // TODO;
 		matrixSetDefaultValues(&matrix);
 		//matrixPrint(&matrix);
 		matrixPrintTransposed(&matrix);
-
-
 	}
 	// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
-	distributeColumns(&matrix, COLS, ROWS);
-		
+	columnsData = distributeColumns(&matrix, COLS, ROWS, &dataCount);
+	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
+
+	if (rank == 0) // Delete the matrix
+	{
+		matrixFree(&matrix);
+		matrixAllocate(&matrix, COLS, ROWS); // Allocate memory for new matrix
+	}
+
+	// Get the matrix data from all processes.
+	selectColumns(&matrix, COLS, ROWS, columnsData, &dataCount);
+	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
+
 	/* TO DO synchronize if needed.*/
 	if (rank == 0)
 	{
+		printf("Received matrix:\n");
+		matrixPrintTransposed(&matrix);
 		matrixFree(&matrix);
 	}
 
