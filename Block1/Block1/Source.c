@@ -389,20 +389,28 @@ void transpose(struct ProcData* procData)
 	struct Matrix dataToSend;
 	matrixAllocate(&dataToSend, procData->p, maxEntriesToSend);
 	matrixSetMinusOnce(&dataToSend);
-	// Fill the data in the matrix(Note: each row holds the data for correspondig processor, e.g. 2nd row for processor 2..)
+
+	struct Matrix dataToReceive;
+	matrixAllocate(&dataToReceive, procData->p, maxEntriesToSend);
+	matrixSetMinusOnce(&dataToReceive);
+
+	// Fill the data in the send matrix(Note: each row holds the data for correspondig processor, e.g. 2nd row for processor 2..)
 	int k, i, j;
+	double * pRowData;
 	for (k = 0; k < procData->p; ++k)
 	{
-		double * pRowData = dataToSend.matrixData[k];
-		// Each @p-th element on each @p-th row starting from k-th (basicaly each element needed for processor @k)
-		
+		if (k == procData->rank) // Writes it directly in receive buffer(2D array)
+			pRowData = dataToReceive.matrixData[k];
+		else
+			pRowData = dataToSend.matrixData[k];
+
+		// Each @p-th element on each @p-th row starting from k-th (basicaly each element needed for processor @k)	
 		for (i = k; i < procData->N; i += procData->p)
 		{
 			// j starts from i-th row and iterates by one column size 
 			for (j = i; j < procData->dataCount; j += procData->N) // Note: I keep it transposed, so N is the number of rows(the size of one column)!
 			{
-				*pRowData = procData->columnsData[j];
-				++pRowData;
+				*(pRowData++) = procData->columnsData[j];
 			}
 		}			
 	}
@@ -422,17 +430,10 @@ void transpose(struct ProcData* procData)
 		}
 	}
 
-	struct Matrix dataToReceive;
-	matrixAllocate(&dataToReceive, procData->p, maxEntriesToSend);
 	// Send each row of the matrix to the corespondig processor.
 	for (k = 0; k < procData->p; ++k)
 	{
-		if (k == procData->rank)
-		{
-			for (j = 0; j < maxEntriesToSend; ++j) // simply copy the data.
-				dataToReceive.matrixData[k][j] = dataToSend.matrixData[k][j];
-		}
-		else
+		if (k != procData->rank)
 		{
 			// Calculate the data needed to be send to each processor.
 			// (Number of rows of this processor which it has to receive) * (Number of columns it has to receive)
