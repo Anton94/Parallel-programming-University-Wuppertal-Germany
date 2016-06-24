@@ -604,6 +604,8 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 	selectColumns(&matrixToReceive, procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
+	// Free the memory allocated for the columns.
+	freeProcessAllocatedMemory(procData);
 	if (procData->rank == 0)
 	{
 		if (outputing)
@@ -621,9 +623,6 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 		matrixFree(&matrixToSend);
 		return res;
 	}
-
-	// Free the memory allocated for the columns.
-	freeProcessAllocatedMemory(procData);
 
 	return -1; // All other processors don`t care the return value.
 }
@@ -665,7 +664,7 @@ void test(int a, int b, int c, int d, int outputingTestStatus, int outputingMatr
 	if (procData.rank == 0)
 	{
 		printf("Testing with matrix with rows from [%d, %d] and columns from [%d, %d] \n\t...took %.9f seconds!\n", a, b, c, d, tSum);
-		printf("\t...with %d tests failed out of %d!\n", failedTests, totalTests);
+		printf("\t...with %d tests failed out of %d!\n", failedTests, totalTests);;
 	}
 }
 
@@ -673,8 +672,9 @@ int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
 
-	test(1, 150, 1, 150, 0, 0);
-//	test(100, 300, 100, 300, 0, 0);
+	/*test(1, 150, 1, 150, 0, 0);
+	test(1, 150, 1, 150, 0, 0);*/
+	test(150, 290, 150, 290, 0, 0);
 
 	MPI_Finalize();
 	return 0;
