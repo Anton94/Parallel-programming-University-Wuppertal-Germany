@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include "mpi.h"
+#include <crtdbg.h>
 
+#include <math.h>
 struct ProcData
 {
 	int rank, p;
@@ -60,7 +62,7 @@ void variable2DArrayFree(struct Variable2DArray* variable2Darray)
 	for (i = 0; i < variable2Darray->ROWS; ++i)
 		free(variable2Darray->arrayData[i]);
 
-	free(variable2Darray->arrayData); // Free the array of pointers to the column arrays.
+	free(variable2Darray->arrayData); // Free the array of pointers to the row arrays.
 	free(variable2Darray->rowSizes);
 
 	variable2Darray->ROWS = 0;
@@ -183,6 +185,24 @@ void matrixPrint(const struct Matrix * matrix)
 	}
 }
 
+// Prints the matrix to the standard output.
+int matrixCompareWithOtherMatrix(const struct Matrix * matrixOne, const struct Matrix* matrixTwo)
+{
+	if (matrixOne->M != matrixTwo->N || matrixOne->N != matrixTwo->M)
+		return 0; 
+	int i, j;
+	for (i = 0; i < matrixOne->M; ++i)
+	{
+		for (j = 0; j < matrixOne->N; ++j)
+		{
+			if (abs(matrixOne->matrixData[i][j] - matrixTwo->matrixData[j][i]) > 0.0000001)
+				return 0;
+		}
+	}
+
+	return 1;
+}
+
 // Prints the matrix to the standard output TRANSPOSED.
 void matrixPrintTransposed(const struct Matrix * matrix)
 {
@@ -242,7 +262,11 @@ void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, i
 }
 
 
-
+void freeProcessAllocatedMemory(struct ProcData * procData)
+{
+	free(procData->columnsData);
+	procData->dataCount = 0;
+}
 
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
 // @M is the number of rows and @N is the number of columns.
@@ -368,7 +392,7 @@ void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 int transposeGetNumberOfEntriesToSendToProc(struct ProcData* procData, int toRank)
 {
 	// (the number of columns I hold) * (the number of rows for procees @toRank)
-	int colsIHold = (procData->dataCount / procData->N);
+	int colsIHold = (procData->dataCount / procData->N); // TODO calculate only once
 	int numberOfRowsForOtherProcess = procData->N / procData->p;
 	if (toRank < procData->N % procData->p) // If it has extra row to send
 		++numberOfRowsForOtherProcess;
@@ -380,7 +404,7 @@ int transposeGetNumberOfEntriesToSendToProc(struct ProcData* procData, int toRan
 int transposeGetNumberOfEntriesToReceivFromProc(struct ProcData* procData, int fromRank)
 {
 	// (the number of rows I have to receive) * (the number of columns @toRank holds)
-	int rowsToReceive = (procData->N / procData->p);
+	int rowsToReceive = (procData->N / procData->p); // TODO calculate only once
 	if (procData->rank < procData->N % procData->p) // If it has extra row to receive
 		++rowsToReceive;
 
@@ -483,8 +507,8 @@ void transpose(struct ProcData* procData)
 		}
 	}
 
-//	printf("Proc %d has matrix received:\n", procData->rank);
-//	variable2DArrayPrint(&dataToReceive);
+	//printf("Proc %d has matrix received:\n", procData->rank);
+	//variable2DArrayPrint(&dataToReceive);
 
 	// Now lets create the new data of processor procData->rank.
 	procData->M = newM;
@@ -513,6 +537,7 @@ void transpose(struct ProcData* procData)
 		{
 			idx = j % procData->p;
 			*pProcData = *pArrayData[idx];
+			//*pProcData = procData->rank;
 			++pProcData;
 			++pArrayData[idx];
 		}
@@ -524,64 +549,132 @@ void transpose(struct ProcData* procData)
 }
 
 
-int main(int argc, char* argv[])
+/// Main functionality.
+// runs the functionality for matrix with @ROWS number of rows, @COLS number of columns and
+// if outputing is TRUE it prints the matrixes and 
+// adds the time for distribute, transpose and select to @tSum EXEPT the time for creating and freeing the matrixes. (only inportant for @rank = 0
+int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing, double * tSum)
 {
-	MPI_Init(&argc, &argv);
-	
-	struct ProcData procData;
-	struct Matrix matrix; // Only used in processor with rank 0.
-	
-	
-	// I make the number of rows and cols to be in all processors, other way is to broadcast them.
-	// TODO Broadcast them!
-	int ROWS = 4;
-	int COLS = 5;
+	struct Matrix matrixToSend, matrixToReceive; // Only used in processor with rank 0.
+	int dims[2];
 
+	if (procData->rank == 0)
+	{
+		dims[0] = ROWS;
+		dims[1] = COLS;
+	}
+
+	MPI_Bcast(dims, 2, MPI_INT, 0, MPI_COMM_WORLD);
 	// Keep the data transposed.
-	procData.M = COLS;
-	procData.N = ROWS;
+	procData->M = dims[1];
+	procData->N = dims[0];
+
+	/* Create the matrixes in proc 0 */
+	// It`s C , so I will keep the matrix 'transposed', because I want to send whole columns,
+	// So I will keep the matrix as rows of columns(first row is the first column, second row is the second column and so on).
+	if (procData->rank == 0)
+	{
+		// Generate matrixes
+		matrixAllocate(&matrixToSend, procData->M, procData->N);	 // NOTE: here I give transposed matrix, so swaped number of rows and cols.
+		matrixAllocate(&matrixToReceive, procData->N, procData->M);// Transposed one but the returned is also transposed
+
+		matrixSetDefaultValues(&matrixToSend);
+
+		if (outputing)
+		{
+			printf("Matrix:\n");
+			matrixPrintTransposed(&matrixToSend);
+		}
+	}
+
+	double t1, t2;
+
+	t1 = MPI_Wtime();
+
+	//// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
+	distributeColumns(&matrixToSend, procData);
+	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
+
+	// Transpose the columns data.
+	transpose(procData);
+	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
+
+	//printf("%d has to send %d\n", procData.rank, procData.dataCount);
+	// Get the matrix data from all processes.
+	selectColumns(&matrixToReceive, procData);
+	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
+
+	if (procData->rank == 0)
+	{
+		if (outputing)
+		{
+			printf("Received matrix:\n");
+			matrixPrintTransposed(&matrixToReceive);
+		}
+
+		// Compare and check if the received one is correct.
+		int res = matrixCompareWithOtherMatrix(&matrixToSend, &matrixToReceive);
+
+		t2 = MPI_Wtime();
+		*tSum += t2 - t1;
+		matrixFree(&matrixToReceive);
+		matrixFree(&matrixToSend);
+		return res;
+	}
+
+	// Free the memory allocated for the columns.
+	freeProcessAllocatedMemory(procData);
+
+	return -1; // All other processors don`t care the return value.
+}
+
+// Testing the functionality for multiple matrixes with row sizes from [a, b] and column sizes from [c, d]
+void test(int a, int b, int c, int d, int outputingTestStatus, int outputingMatrixValues)
+{
+	struct ProcData procData;
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &procData.rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &procData.p);
 
-	/* Create the matrix in proc 0 */
-	// It`s C , so I will keep the matrix 'transposed', because I want to send whole columns,
-	// So I will keep the matrix as rows of columns(first row is the first column, second row is the second column and so on).
-	if (procData.rank == 0)
+	double tSum = 0.0;
+
+	int i, j;
+	int res;
+	int failedTests = 0, totalTests = (b - a + 1) * (d - c + 1); // Because it`s closed interval.
+	for (i = a; i <= b; ++i)
 	{
-		// Generate matrix 3x5, but transposed...
-		if (matrixAllocate(&matrix, COLS, ROWS)) // NOTE: here I give transposed matrix, so swaped number of rows and cols.
-			return -1; // TODO;
-		matrixSetDefaultValues(&matrix);
-		//matrixPrint(&matrix);
-		printf("Matrix:\n");
-		matrixPrintTransposed(&matrix);
-		printf("End of matrix:\n");
-	}
-	// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
-	distributeColumns(&matrix, &procData);
-	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
-
-	if (procData.rank == 0) // Delete the matrix
-	{
-		matrixFree(&matrix);
-		matrixAllocate(&matrix, ROWS, COLS); // Allocate memory for new matrix
-	}
-
-	// Transpose the columns data.
-	transpose(&procData);
-
-	//printf("%d has to send %d\n", procData.rank, procData.dataCount);
-	// Get the matrix data from all processes.
-	selectColumns(&matrix, &procData);
-	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
+		for (j = c; j <= d; ++j)
+		{
+			res = functionality(&procData, i, j, outputingMatrixValues, &tSum);
+			if (procData.rank == 0)
+			{
+				if (!res)
+					++failedTests;
+				if (outputingTestStatus)
+				{
+					printf("Testing with matrix %d-by-%d...\n", i, j);
+					if (res)
+						printf("\t ...success!\n");
+					else
+						printf("\t ...failed!\n");
+				}
+			}
+		}
+	}	
 
 	if (procData.rank == 0)
 	{
-		printf("Received matrix:\n");
-		matrixPrintTransposed(&matrix);
-		matrixFree(&matrix);
+		printf("Testing with matrix with rows from [%d, %d] and columns from [%d, %d] \n\t...took %.9f seconds!\n", a, b, c, d, tSum);
+		printf("\t...with %d tests failed out of %d!\n", failedTests, totalTests);
 	}
+}
+
+int main(int argc, char* argv[])
+{
+	MPI_Init(&argc, &argv);
+
+	test(1, 150, 1, 150, 0, 0);
+//	test(100, 300, 100, 300, 0, 0);
 
 	MPI_Finalize();
 	return 0;
