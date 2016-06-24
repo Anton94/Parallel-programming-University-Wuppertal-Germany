@@ -364,6 +364,33 @@ void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 	}
 }
 
+// Returns the ammount of data to be send from @procData->rank processor to @toRank processor.
+int transposeGetNumberOfEntriesToSendToProc(struct ProcData* procData, int toRank)
+{
+	// (the number of columns I hold) * (the number of rows for procees @toRank)
+	int colsIHold = (procData->dataCount / procData->N);
+	int numberOfRowsForOtherProcess = procData->N / procData->p;
+	if (toRank < procData->N % procData->p) // If it has extra row to send
+		++numberOfRowsForOtherProcess;
+
+	return colsIHold * numberOfRowsForOtherProcess;
+}
+
+// Returns the ammount of data @procData->rank processor to receive from @toRank processor.
+int transposeGetNumberOfEntriesToReceivFromProc(struct ProcData* procData, int fromRank)
+{
+	// (the number of rows I have to receive) * (the number of columns @toRank holds)
+	int rowsToReceive = (procData->N / procData->p);
+	if (procData->rank < procData->N % procData->p) // If it has extra row to receive
+		++rowsToReceive;
+
+	int numberOfColumnsOtherProcHolds = procData->M / procData->p;
+	if (fromRank < procData->M % procData->p) // If it hold an extra column
+		++numberOfColumnsOtherProcHolds;
+
+	return rowsToReceive * numberOfColumnsOtherProcHolds;
+}
+
 // Transpose the matrix over each processor. A lot of communications(p^2)
 void transpose(struct ProcData* procData)
 {
@@ -384,25 +411,51 @@ void transpose(struct ProcData* procData)
 	
 	// Note: M is the number of columns and N is the number of rows(the starting matrix is transposed because it's the better way for C)
 	int maxEntriesToSend = (procData->M / procData->p + 1) * (procData->N / procData->p + 1);
+	
+	int k, i, j;
 
-	// Creates 2D array @p x maxEntriesToSend
-	struct Matrix dataToSend;
-	matrixAllocate(&dataToSend, procData->p, maxEntriesToSend);
-	matrixSetMinusOnce(&dataToSend);
+	struct Variable2DArray dataToSend, dataToReceive;
+	// Calculate the data count that needs to be send to each processor.
+	dataToSend.ROWS = procData->p;
+	dataToSend.rowSizes = (int*)malloc(dataToSend.ROWS * sizeof(int));
+	for (k = 0; k < procData->p; ++k)
+	{
+		dataToSend.rowSizes[k] = transposeGetNumberOfEntriesToSendToProc(procData, k);
+	}
+	// Calculate the data count that needs to be receive from each processor.dataToSend.ROWS = procData->p;
+	dataToReceive.ROWS = procData->p;
+	dataToReceive.rowSizes = (int*)malloc(dataToReceive.ROWS * sizeof(int));
+	for (k = 0; k < procData->p; ++k)
+	{
+		dataToReceive.rowSizes[k] = transposeGetNumberOfEntriesToReceivFromProc(procData, k);
+	}
 
-	struct Matrix dataToReceive;
-	matrixAllocate(&dataToReceive, procData->p, maxEntriesToSend);
-	matrixSetMinusOnce(&dataToReceive);
+	/*for (i = 0; i < procData->p; ++i)
+		printf("%d needs to send %d to proc %d\n", procData->rank, dataToSend.rowSizes[i], i);
+	for (i = 0; i < procData->p; ++i)
+		printf("%d needs to receive %d from proc %d\n", procData->rank, dataToReceive.rowSizes[i], i);*/
+
+	// Allocate the memory.
+	variable2DArrayAllocate(&dataToSend);
+	variable2DArrayAllocate(&dataToReceive);
+
+	//// Creates 2D array @p x maxEntriesToSend
+	//struct Matrix dataToSend;
+	//matrixAllocate(&dataToSend, procData->p, maxEntriesToSend);
+	//matrixSetMinusOnce(&dataToSend);
+
+	//struct Matrix dataToReceive;
+	//matrixAllocate(&dataToReceive, procData->p, maxEntriesToSend);
+	//matrixSetMinusOnce(&dataToReceive);
 
 	// Fill the data in the send matrix(Note: each row holds the data for correspondig processor, e.g. 2nd row for processor 2..)
-	int k, i, j;
 	double * pRowData;
 	for (k = 0; k < procData->p; ++k)
 	{
 		if (k == procData->rank) // Writes it directly in receive buffer(2D array)
-			pRowData = dataToReceive.matrixData[k];
+			pRowData = dataToReceive.arrayData[k];
 		else
-			pRowData = dataToSend.matrixData[k];
+			pRowData = dataToSend.arrayData[k];
 
 		// Each @p-th element on each @p-th row starting from k-th (basicaly each element needed for processor @k)	
 		for (i = k; i < procData->N; i += procData->p)
@@ -415,35 +468,59 @@ void transpose(struct ProcData* procData)
 		}			
 	}
 
-	printf("Proc %d has matrix to send:\n", procData->rank);
-	matrixPrint(&dataToSend);
+//	printf("Proc %d has matrix to send:\n", procData->rank);
+//	variable2DArrayPrint(&dataToSend);
 
 	// Send each row of the matrix to the corespondig processor.
+	// Receive a row of data from the coresponding processor.
+	// Other approach for k = 0 to procData->rank && from procData->rank + 1 to p
 	for (k = 0; k < procData->p; ++k)
 	{
 		if (k != procData->rank)
 		{
-			// Calculate the data needed to be send to each processor.
-			// (Number of rows of this processor which it has to receive) * (Number of columns it has to receive)
-			// Not for now, it`s almost not important. 
-			MPI_Send(dataToSend.matrixData[k], maxEntriesToSend, MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
+			MPI_Send(dataToSend.arrayData[k], dataToSend.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
+			MPI_Recv(dataToReceive.arrayData[k], dataToReceive.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 		}
 	}
 
-	// Send each row of the matrix to the corespondig processor.
-	for (k = 0; k < procData->p; ++k)
+//	printf("Proc %d has matrix received:\n", procData->rank);
+//	variable2DArrayPrint(&dataToReceive);
+
+	// Now lets create the new data of processor procData->rank.
+	procData->M = newM;
+	procData->N = newN;
+	// Free the old data.
+	free(procData->columnsData);
+	// Allocate the new memory for the new data.
+	allocateOneDimArrayForMultipleColsOfGivenProc(procData);
+
+	// Create extra pointers to each row of received 2D array so I can iterate on them
+	double ** pArrayData = (double**)malloc(dataToReceive.ROWS * sizeof(double*));
+	for (i = 0; i < procData->p; ++i)
 	{
-		if (k != procData->rank)
+		pArrayData[i] = dataToReceive.arrayData[i];
+	}
+
+	double * pProcData = procData->columnsData; // For iteration on columnsData.
+
+	// Fill the data in the new memory
+	int idx;
+	int columnsItHolds = procData->dataCount / procData->N;
+	for (i = 0; i < columnsItHolds; ++i) // For each column it hold(in not transposed row it hold)
+	{
+		// Goes through the whole column (in not transposed row) and writes the data cycling from each other processor.
+		for (j = 0; j < procData->N; ++j)
 		{
-			// Calculate the data needed to be send to each processor.
-			// (Number of rows of this processor which it has to receive) * (Number of columns it has to receive)
-			// Not for now, it`s almost not important. 
-			MPI_Recv(dataToReceive.matrixData[k], maxEntriesToSend, MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			idx = j % procData->p;
+			*pProcData = *pArrayData[idx];
+			++pProcData;
+			++pArrayData[idx];
 		}
 	}
 
-	printf("Proc %d has matrix received:\n", procData->rank);
-	matrixPrint(&dataToReceive);
+	free(pArrayData);
+	variable2DArrayFree(&dataToSend);
+	variable2DArrayFree(&dataToReceive);
 }
 
 
@@ -488,7 +565,7 @@ int main(int argc, char* argv[])
 	if (procData.rank == 0) // Delete the matrix
 	{
 		matrixFree(&matrix);
-		matrixAllocate(&matrix, COLS, ROWS); // Allocate memory for new matrix
+		matrixAllocate(&matrix, ROWS, COLS); // Allocate memory for new matrix
 	}
 
 	// Transpose the columns data.
@@ -502,7 +579,7 @@ int main(int argc, char* argv[])
 	if (procData.rank == 0)
 	{
 		printf("Received matrix:\n");
-	//	matrixPrintTransposed(&matrix);
+		matrixPrintTransposed(&matrix);
 		matrixFree(&matrix);
 	}
 
