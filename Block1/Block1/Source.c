@@ -241,24 +241,23 @@ void transpose(struct ProcData* procData)
 
 	// Send each row of the matrix to the corespondig processor.
 	// Receive a row of data from the coresponding processor.
-	// Other approach for k = 0 to procData->rank && from procData->rank + 1 to p
-	for (k = 1; k < procData->p; ++k)
-	{
-		int next = (procData->rank + k) % procData->p,
-			prev = (procData->rank - k + procData->p) % procData->p;
-		
-		// TODO deadlock has here...
 
-		// I don`t want to send to me and receive from me.
-		if (procData->rank % (k + 1)) 
+	int halfProc = procData->p / 2;
+	for (i = 0; i < procData->p; ++i)
+	{
+		for (j = i; j < procData->p; ++j)
 		{
-			MPI_Send(dataToSend.arrayData[next], dataToSend.rowSizes[next], MPI_DOUBLE, next, 42, MPI_COMM_WORLD);
-			MPI_Recv(dataToReceive.arrayData[prev], dataToReceive.rowSizes[prev], MPI_DOUBLE, prev, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-		}
-		else 
-		{
-			MPI_Recv(dataToReceive.arrayData[prev], dataToReceive.rowSizes[prev], MPI_DOUBLE, prev, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-			MPI_Send(dataToSend.arrayData[next], dataToSend.rowSizes[next], MPI_DOUBLE, next, 42, MPI_COMM_WORLD);
+			if (i != j)
+				if (procData->rank == i)
+				{
+					MPI_Send(dataToSend.arrayData[j], dataToSend.rowSizes[j], MPI_DOUBLE, j, 42, MPI_COMM_WORLD);
+					MPI_Recv(dataToReceive.arrayData[j], dataToReceive.rowSizes[j], MPI_DOUBLE, j, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				}
+				else if (procData->rank == j)
+				{
+					MPI_Recv(dataToReceive.arrayData[i], dataToReceive.rowSizes[i], MPI_DOUBLE, i, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+					MPI_Send(dataToSend.arrayData[i], dataToSend.rowSizes[i], MPI_DOUBLE, i, 42, MPI_COMM_WORLD);
+				}
 		}
 	}
 
@@ -425,8 +424,8 @@ int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
 
-	//test(1000, 1100, 1000, 1100, 0, 0);
 	test(1, 150, 1, 150, 0, 0);
+	//test(1000, 1100, 1000, 1100, 0, 0);
 	//test(200, 290, 200, 290, 1, 0);
 	//test(220, 240, 220, 240, 1, 0);
 //	test(11, 11, 9, 9, 1, 1);

@@ -2,3 +2,7 @@ Block 0 , задача 3 - пращането на данните с 1 броа�
 
 
 Block 1, задача 4 - deadlock с транспонирането.
+
+Binary style distribute && select
+
+At the momeny p^2 / 2 are the transpose communications -> TODO better transporting algorithm
