@@ -144,25 +144,37 @@ void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 	}
 }
 
+// Returns the total number of columns I hold.
+int transposeColumnsIHold(struct ProcData* procData)
+{
+	return procData->dataCount / procData->N;
+}
+
 // Returns the ammount of data to be send from @procData->rank processor to @toRank processor.
-int transposeGetNumberOfEntriesToSendToProc(struct ProcData* procData, int toRank)
+int transposeGetNumberOfEntriesToSendToProc(struct ProcData* procData, int toRank, int columnsIHold)
 {
 	// (the number of columns I hold) * (the number of rows for procees @toRank)
-	int colsIHold = (procData->dataCount / procData->N); // TODO calculate only once
 	int numberOfRowsForOtherProcess = procData->N / procData->p;
 	if (toRank < procData->N % procData->p) // If it has extra row to send
 		++numberOfRowsForOtherProcess;
 
-	return colsIHold * numberOfRowsForOtherProcess;
+	return columnsIHold * numberOfRowsForOtherProcess;
+}
+
+// Returns the number of rows given processor needs to receive from transposing.
+int transposeRowsToReceive(struct ProcData* procData)
+{
+	int rowsToReceive = (procData->N / procData->p);
+	if (procData->rank < procData->N % procData->p) // If it has extra row to receive
+		++rowsToReceive;
+
+	return rowsToReceive;
 }
 
 // Returns the ammount of data @procData->rank processor to receive from @toRank processor.
-int transposeGetNumberOfEntriesToReceivFromProc(struct ProcData* procData, int fromRank)
+int transposeGetNumberOfEntriesToReceivFromProc(struct ProcData* procData, int fromRank, int rowsToReceive)
 {
 	// (the number of rows I have to receive) * (the number of columns @toRank holds)
-	int rowsToReceive = (procData->N / procData->p); // TODO calculate only once
-	if (procData->rank < procData->N % procData->p) // If it has extra row to receive
-		++rowsToReceive;
 
 	int numberOfColumnsOtherProcHolds = procData->M / procData->p;
 	if (fromRank < procData->M % procData->p) // If it hold an extra column
@@ -189,19 +201,18 @@ void transpose(struct ProcData* procData)
 	int k, i, j;
 
 	struct Variable2DArray dataToSend, dataToReceive;
-	dataToSend.ROWS = procData->p;
-	dataToSend.rowSizes = (int*)malloc(dataToSend.ROWS * sizeof(int));
-	// Calculate the data count that needs to be send to each processor.
-	for (k = 0; k < procData->p; ++k)
-	{
-		dataToSend.rowSizes[k] = transposeGetNumberOfEntriesToSendToProc(procData, k);
-	}
-	// Calculate the data count that needs to be receive from each processor.dataToSend.ROWS = procData->p;
-	dataToReceive.ROWS = procData->p;
+	dataToSend.ROWS = dataToReceive.ROWS = procData->p;
+	dataToSend.rowSizes = (int*)malloc(dataToSend.ROWS * sizeof(int));	
 	dataToReceive.rowSizes = (int*)malloc(dataToReceive.ROWS * sizeof(int));
+	// Precalculate the total rows count that the processor need to receive and the columns it holds.
+	int columnsIHold = transposeColumnsIHold(procData),
+		rowsToReceive = transposeRowsToReceive(procData);
 	for (k = 0; k < procData->p; ++k)
 	{
-		dataToReceive.rowSizes[k] = transposeGetNumberOfEntriesToReceivFromProc(procData, k);
+		// Calculate the data count that needs to be send to k-th processor.
+		dataToSend.rowSizes[k] = transposeGetNumberOfEntriesToSendToProc(procData, k, columnsIHold);
+		// Calculate the data count that needs to be receive from k-th processor.
+		dataToReceive.rowSizes[k] = transposeGetNumberOfEntriesToReceivFromProc(procData, k, rowsToReceive);
 	}
 
 	// Allocate the memory.
@@ -223,7 +234,7 @@ void transpose(struct ProcData* procData)
 			// j starts from i-th row and iterates by one column size 
 			for (j = i; j < procData->dataCount; j += procData->N) // Note: I keep it transposed, so N is the number of rows(the size of one column)!
 			{
-				*(pRowData++) = procData->columnsData[j];
+				*pRowData++ = procData->columnsData[j];
 			}
 		}			
 	}
@@ -233,18 +244,24 @@ void transpose(struct ProcData* procData)
 	// Other approach for k = 0 to procData->rank && from procData->rank + 1 to p
 	for (k = 0; k < procData->p; ++k)
 	{
-		if (k != procData->rank)
+		int next = (procData->rank + k) % procData->p,
+			prev = (procData->rank + procData->p - k) % procData->p;
+		
+		// TODO deadlock has here...
+
+		// I don`t want to send to me and receive from me.
+		if (procData->rank % 2 == 1) 
 		{
-			if (k & 1) // If it`s is ODD (last bit 1)
+			if (procData->rank != next)
 			{
-				MPI_Send(dataToSend.arrayData[k], dataToSend.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
-				MPI_Recv(dataToReceive.arrayData[k], dataToReceive.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				MPI_Send(dataToSend.arrayData[next], dataToSend.rowSizes[next], MPI_DOUBLE, next, 42, MPI_COMM_WORLD);
+				MPI_Recv(dataToReceive.arrayData[prev], dataToReceive.rowSizes[prev], MPI_DOUBLE, prev, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 			}
-			else
-			{
-				MPI_Recv(dataToReceive.arrayData[k], dataToReceive.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-				MPI_Send(dataToSend.arrayData[k], dataToSend.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
-			}
+		}
+		else if (prev != procData->rank)
+		{
+			MPI_Recv(dataToReceive.arrayData[prev], dataToReceive.rowSizes[prev], MPI_DOUBLE, prev, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			MPI_Send(dataToSend.arrayData[next], dataToSend.rowSizes[next], MPI_DOUBLE, next, 42, MPI_COMM_WORLD);
 		}
 	}
 
@@ -273,10 +290,7 @@ void transpose(struct ProcData* procData)
 		// Goes through the whole column (in not transposed row) and writes the data cycling from each other processor.
 		for (j = 0; j < procData->N; ++j)
 		{
-			idx = j % procData->p;
-			*pProcData = *pArrayData[idx];
-			++pProcData;
-			++pArrayData[idx];
+			*(pProcData)++ = *pArrayData[j % procData->p]++;
 		}
 	}
 
@@ -386,7 +400,7 @@ void test(int a, int b, int c, int d, int outputingTestStatus, int outputingMatr
 	{
 		for (j = c; j <= d; ++j)
 		{
-			res = functionality(&procData, i, j, outputingMatrixValues, &tSum);
+			res = functionality(&procData, i, i, outputingMatrixValues, &tSum);
 			if (procData.rank == 0)
 			{
 				if (!res)
@@ -414,11 +428,11 @@ int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
 
-	test(1000, 1100, 1000, 1100, 0, 0);
-	//test(220, 230, 240, 250, 1, 0);
+	//test(1000, 1100, 1000, 1100, 0, 0);
+	test(1, 150, 1, 150, 0, 0);
 	//test(200, 290, 200, 290, 1, 0);
 	//test(220, 240, 220, 240, 1, 0);
-	//test(11, 11, 9, 9, 1, 1);
+//	test(11, 11, 9, 9, 1, 1);
 
 	MPI_Finalize();
 
