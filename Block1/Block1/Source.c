@@ -1,8 +1,7 @@
 #include <stdlib.h>
 #include "mpi.h"
-#include <crtdbg.h>
+#include "TwoDimArrays.h"
 
-#include <math.h>
 struct ProcData
 {
 	int rank, p;
@@ -15,212 +14,6 @@ struct ProcData
 	int M, N;
 };
 
-// Matrix with variable row lengths
-struct Variable2DArray
-{
-	int ROWS;
-	double ** arrayData;
-	int * rowSizes;
-};
-
-// Generates new matrix by the given number of rows(@ROWS) and array with row sizes.
-// Need manualy to take care to delete the old matrix.
-// Need the ROWS and rowSizes array to be seted before calling 'variable2DArrayAllocate'!!!
-// Returns 0 if it manage to allocate the memory for the matrix and 0 if not.
-int variable2DArrayAllocate(struct Variable2DArray* variable2Darray)
-{
-	variable2Darray->arrayData = (double**)malloc(variable2Darray->ROWS * sizeof(double*)); // Allocate the vector which holds the pointers to diff rows
-	if (!variable2Darray->arrayData)
-	{
-		printf("Failed to allocate the matrix!\n");
-		return 1;
-	}
-	int i, j;
-	for (i = 0; i < variable2Darray->ROWS; ++i)
-	{
-		variable2Darray->arrayData[i] = (double*)malloc(variable2Darray->rowSizes[i] * sizeof(double)); // Allocate the vector for the columns.
-		if (!variable2Darray->arrayData[i])
-		{
-			printf("Failed to allocate the matrix!\n");
-			// Now free the allocated memory so far.
-			for (j = i - 1; j >= 0; --i)
-				free(variable2Darray->arrayData[i]);
-			free(variable2Darray->arrayData); // Free the array of pointers to the column arrays.
-			variable2Darray->arrayData = NULL;
-
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-// Frees the allocated memory for the 2D array. Sets default values.
-void variable2DArrayFree(struct Variable2DArray* variable2Darray)
-{
-	int i;
-	for (i = 0; i < variable2Darray->ROWS; ++i)
-		free(variable2Darray->arrayData[i]);
-
-	free(variable2Darray->arrayData); // Free the array of pointers to the row arrays.
-	free(variable2Darray->rowSizes);
-
-	variable2Darray->ROWS = 0;
-	variable2Darray->arrayData = NULL;
-	variable2Darray->rowSizes = NULL;
-}
-
-// Prints the matrix to the standard output.
-void variable2DArrayPrint(const struct Variable2DArray * variable2Darray)
-{
-	if (variable2Darray->arrayData == NULL)
-		return; // A little safty..
-	int i, j;
-	for (i = 0; i < variable2Darray->ROWS; ++i)
-	{
-		for (j = 0; j < variable2Darray->rowSizes[i]; ++j)
-		{
-			printf("%*.3f ", 6, variable2Darray->arrayData[i][j]);
-		}
-		printf("\n");
-	}
-}
-
-
-/* Matrix struct .. basic.. */
-struct Matrix
-{
-	int M, N; // Rows and cols number
-	double ** matrixData;
-};
-// Generates new matrix by the given M and N.
-// Need manualy to take care to delete the old matrix.
-// Returns 0 if it manage to allocate the memory for the matrix and 0 if not.
-int matrixAllocate(struct Matrix* matrix, int m, int n)
-{
-	matrix->M = m;
-	matrix->N = n;
-
-	matrix->matrixData = (double**)malloc(matrix->M * sizeof(double*)); // Allocate the vector which holds the pointers to diff rows
-	if (!matrix->matrixData)
-	{
-		printf("Failed to allocate the matrix!\n");
-		return 1;
-	}
-	int i, j;
-	for (i = 0; i < matrix->M; ++i)
-	{
-		matrix->matrixData[i] = (double*)malloc(matrix->N * sizeof(double)); // Allocate the vector for the columns.
-		if (!matrix->matrixData[i])
-		{
-			printf("Failed to allocate the matrix!\n");
-			// Now free the allocated memory so far.
-			for (j = i - 1; j >= 0; --i)
-				free(matrix->matrixData[i]);
-			free(matrix->matrixData); // Free the array of pointers to the column arrays.
-			matrix->matrixData = NULL;
-
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-// Frees the allocated memory for the matrix. Sets M and N to 0.
-void matrixFree(struct Matrix* matrix)
-{
-	int i;
-	for (i = 0; i < matrix->M; ++i)
-		free(matrix->matrixData[i]);
-
-	free(matrix->matrixData); // Free the array of pointers to the column arrays.
-
-	matrix->M = matrix->N = 0;
-	matrix->matrixData = NULL;
-}
-
-// Sets the default values for the matrix Aij = j + i / 1000 (transposed...)
-void matrixSetDefaultValues(struct Matrix* matrix)
-{
-	if (matrix->matrixData == NULL)
-		return; // A little safty..
-	int i, j;
-	for (i = 0; i < matrix->M; ++i)
-	{
-		double sum = i / 1000.0;
-		for (j = 0; j < matrix->N; ++j)
-		{
-			matrix->matrixData[i][j] = j + sum;
-		}
-	}
-}
-void matrixSetMinusOnce(struct Matrix* matrix)
-{
-	if (matrix->matrixData == NULL)
-		return; // A little safty..
-	int i, j;
-	for (i = 0; i < matrix->M; ++i)
-	{
-		for (j = 0; j < matrix->N; ++j)
-		{
-			matrix->matrixData[i][j] = -1.0;
-		}
-	}
-}
-
-// Prints the matrix to the standard output.
-void matrixPrint(const struct Matrix * matrix)
-{
-	if (matrix->matrixData == NULL)
-		return; // A little safty..
-	int i, j;
-	for (i = 0; i < matrix->M; ++i)
-	{
-		for (j = 0; j < matrix->N; ++j)
-		{
-			printf("%*.3f ", 6, matrix->matrixData[i][j]);
-		}
-		printf("\n");
-	}
-}
-
-// Prints the matrix to the standard output.
-int matrixCompareWithOtherMatrix(const struct Matrix * matrixOne, const struct Matrix* matrixTwo)
-{
-	if (matrixOne->M != matrixTwo->N || matrixOne->N != matrixTwo->M)
-		return 0; 
-	int i, j;
-	for (i = 0; i < matrixOne->M; ++i)
-	{
-		for (j = 0; j < matrixOne->N; ++j)
-		{
-			if (abs(matrixOne->matrixData[i][j] - matrixTwo->matrixData[j][i]) > 0.0000001)
-				return 0;
-		}
-	}
-
-	return 1;
-}
-
-// Prints the matrix to the standard output TRANSPOSED.
-void matrixPrintTransposed(const struct Matrix * matrix)
-{
-	if (matrix->matrixData == NULL)
-		return; // A little safty..
-	int i, j;
-	for (j = 0; j < matrix->N; ++j)
-	{
-		for (i = 0; i < matrix->M; ++i)
-		{
-			printf("%*.3f ", 6, matrix->matrixData[i][j]);
-		}
-		printf("\n");
-	}
-}
-
-
-/* END of matrix stuff */
 
 int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N)
 {
@@ -261,13 +54,6 @@ void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, i
 	}
 }
 
-
-void freeProcessAllocatedMemory(struct ProcData * procData)
-{
-	free(procData->columnsData);
-	procData->dataCount = 0;
-}
-
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
 // @M is the number of rows and @N is the number of columns.
 // Returns pointer to the new allocated memory for the columns...
@@ -278,25 +64,11 @@ void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
 	// Another approach is like 2D array, but we will see which one is better. (iteration is not so good)
 	allocateOneDimArrayForMultipleColsOfGivenProc(procData);
 
-	//printf("%d has data count of %d\n", procData->rank, procData->dataCount);
-	//printf("Data count of proc %d = %d\n", rank, dataCount);
 	// I chose the 0 processor to distribute the matrix
 	if (procData->rank == 0)
 	{
 		// For rank 0 I have all the data so simply write it.
 		fillDataOfOneDimColumnsArray(matrix, procData->columnsData, procData->rank, procData->p, procData->M, procData->N);
-	
-		
-		/*printf("Proc 0 has\n");
-		
-		int j;
-		for (j = 0; j < dataCount; ++j)
-		{
-			printf("%.3f ", columnsData[j]);
-		}
-		printf("\n");*/
-
-
 
 		double * tempColumnsData = NULL;
 		int tempDataCount = procData->dataCount; // Like proc 0
@@ -319,12 +91,6 @@ void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
 			}
 
 			fillDataOfOneDimColumnsArray(matrix, tempColumnsData, i, procData->p, procData->M, procData->N); // Fill the data
-			
-			/*int j;
-			for (j = 0; j < tempDataCount; ++j)
-			{
-				printf("%.3f ", tempColumnsData[j]);
-			}*/
 
 			MPI_Send(tempColumnsData, tempDataCount, MPI_DOUBLE, i, 42, MPI_COMM_WORLD);
 		}
@@ -333,14 +99,7 @@ void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
 	}
 	else // Receive the data from process 0.
 	{
-		//printf("Receive %d in proc %d\n", *dataCount, rank);
 		MPI_Recv(procData->columnsData, procData->dataCount, MPI_DOUBLE, 0, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-		/*int j;
-		for (j = 0; j < *dataCount; ++j)
-		{
-			printf("%.3f ", columnsData[j]);
-		}
-		printf("\n");*/
 	}
 }
 
@@ -353,7 +112,6 @@ void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 		double * tempBuffer = (double*)malloc(procData->dataCount * sizeof(double));
 		double * pTempBuffer;
 		int tempReceivedSize;
-	//	printf("Data count %d\n", procData->dataCount);
 		// Write own data to the matrix.
 		for (int i = 0; i < procData->p; ++i)
 		{
@@ -364,7 +122,6 @@ void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 			else
 			{
 				tempReceivedSize = getTheTotalNumberOfElementsInProcColumns(i, procData->p, procData->M, procData->N); // Proc 0 has most(or equals to) other columns
-			//	printf("Tries to recv %d from %d\n", tempReceivedSize, i);
 				MPI_Recv(tempBuffer, tempReceivedSize, MPI_DOUBLE, i, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 				pTempBuffer = tempBuffer;
 			}
@@ -383,7 +140,6 @@ void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 	}
 	else
 	{
-	//	printf("%d tries to send %d\n", procData->rank, procData->dataCount);
 		MPI_Send(procData->columnsData, procData->dataCount, MPI_DOUBLE, 0, 42, MPI_COMM_WORLD);
 	}
 }
@@ -429,19 +185,13 @@ void transpose(struct ProcData* procData)
 	// total every @p entry on every @p-th row of the matrix. And this is for one processor.
 	// Note: the sequence is first put the data from first needed row, after that the data for the 
 	// next needed row(p-th row from first one) and so on.
-	// The maximum ammount of elements to send is:
-	// (NumberOfColumns / p + 1)*(NumberOfRows / p + 1)
-	// (every @p-th entry on one row + one extra if not equaly divided between all processes) * (every @p-th row + one extra)
-	
-	// Note: M is the number of columns and N is the number of rows(the starting matrix is transposed because it's the better way for C)
-	int maxEntriesToSend = (procData->M / procData->p + 1) * (procData->N / procData->p + 1);
-	
+
 	int k, i, j;
 
 	struct Variable2DArray dataToSend, dataToReceive;
-	// Calculate the data count that needs to be send to each processor.
 	dataToSend.ROWS = procData->p;
 	dataToSend.rowSizes = (int*)malloc(dataToSend.ROWS * sizeof(int));
+	// Calculate the data count that needs to be send to each processor.
 	for (k = 0; k < procData->p; ++k)
 	{
 		dataToSend.rowSizes[k] = transposeGetNumberOfEntriesToSendToProc(procData, k);
@@ -454,23 +204,9 @@ void transpose(struct ProcData* procData)
 		dataToReceive.rowSizes[k] = transposeGetNumberOfEntriesToReceivFromProc(procData, k);
 	}
 
-	/*for (i = 0; i < procData->p; ++i)
-		printf("%d needs to send %d to proc %d\n", procData->rank, dataToSend.rowSizes[i], i);
-	for (i = 0; i < procData->p; ++i)
-		printf("%d needs to receive %d from proc %d\n", procData->rank, dataToReceive.rowSizes[i], i);*/
-
 	// Allocate the memory.
 	variable2DArrayAllocate(&dataToSend);
 	variable2DArrayAllocate(&dataToReceive);
-
-	//// Creates 2D array @p x maxEntriesToSend
-	//struct Matrix dataToSend;
-	//matrixAllocate(&dataToSend, procData->p, maxEntriesToSend);
-	//matrixSetMinusOnce(&dataToSend);
-
-	//struct Matrix dataToReceive;
-	//matrixAllocate(&dataToReceive, procData->p, maxEntriesToSend);
-	//matrixSetMinusOnce(&dataToReceive);
 
 	// Fill the data in the send matrix(Note: each row holds the data for correspondig processor, e.g. 2nd row for processor 2..)
 	double * pRowData;
@@ -492,9 +228,6 @@ void transpose(struct ProcData* procData)
 		}			
 	}
 
-//	printf("Proc %d has matrix to send:\n", procData->rank);
-//	variable2DArrayPrint(&dataToSend);
-
 	// Send each row of the matrix to the corespondig processor.
 	// Receive a row of data from the coresponding processor.
 	// Other approach for k = 0 to procData->rank && from procData->rank + 1 to p
@@ -502,13 +235,18 @@ void transpose(struct ProcData* procData)
 	{
 		if (k != procData->rank)
 		{
-			MPI_Send(dataToSend.arrayData[k], dataToSend.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
-			MPI_Recv(dataToReceive.arrayData[k], dataToReceive.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			if (k & 1) // If it`s is ODD (last bit 1)
+			{
+				MPI_Send(dataToSend.arrayData[k], dataToSend.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
+				MPI_Recv(dataToReceive.arrayData[k], dataToReceive.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			}
+			else
+			{
+				MPI_Recv(dataToReceive.arrayData[k], dataToReceive.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				MPI_Send(dataToSend.arrayData[k], dataToSend.rowSizes[k], MPI_DOUBLE, k, 42, MPI_COMM_WORLD);
+			}
 		}
 	}
-
-	//printf("Proc %d has matrix received:\n", procData->rank);
-	//variable2DArrayPrint(&dataToReceive);
 
 	// Now lets create the new data of processor procData->rank.
 	procData->M = newM;
@@ -537,7 +275,6 @@ void transpose(struct ProcData* procData)
 		{
 			idx = j % procData->p;
 			*pProcData = *pArrayData[idx];
-			//*pProcData = procData->rank;
 			++pProcData;
 			++pArrayData[idx];
 		}
@@ -548,6 +285,12 @@ void transpose(struct ProcData* procData)
 	variable2DArrayFree(&dataToReceive);
 }
 
+// Deletes the allocated memory for the processor columns.
+void freeProcessAllocatedMemory(struct ProcData * procData)
+{
+	free(procData->columnsData);
+	procData->dataCount = 0;
+}
 
 /// Main functionality.
 // runs the functionality for matrix with @ROWS number of rows, @COLS number of columns and
@@ -591,7 +334,7 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 
 	t1 = MPI_Wtime();
 
-	//// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
+	// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
 	distributeColumns(&matrixToSend, procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
@@ -599,7 +342,6 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 	transpose(procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
-	//printf("%d has to send %d\n", procData.rank, procData.dataCount);
 	// Get the matrix data from all processes.
 	selectColumns(&matrixToReceive, procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
@@ -672,10 +414,13 @@ int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
 
-	/*test(1, 150, 1, 150, 0, 0);
-	test(1, 150, 1, 150, 0, 0);*/
-	test(150, 290, 150, 290, 0, 0);
+	test(1000, 1100, 1000, 1100, 0, 0);
+	//test(220, 230, 240, 250, 1, 0);
+	//test(200, 290, 200, 290, 1, 0);
+	//test(220, 240, 220, 240, 1, 0);
+	//test(11, 11, 9, 9, 1, 1);
 
 	MPI_Finalize();
+
 	return 0;
 }
