@@ -5,4 +5,8 @@ Block 1, задача 4 - deadlock с транспонирането.
 
 Binary style distribute && select
 
-At the momeny p^2 / 2 are the transpose communications -> TODO better transporting algorithm
+At the momeny p^2  are the transpose communications -> TODO better transporting algorithm
+
+TODO transpose -> binary-wise first half recv send, second half send recv and logP times divide by 2 the halfs and so on
+
+TODO transpose -> ring like topology, everyone sends to it's right neighbour the data, which has been received and writes it to his local table. A little optimization - So modification to Send2D vector, evaluates it from right neigbour and increment the evaluated row by one, so it can send it ATM and not to wait to calculate all of them and then to start sending, but each processor has to do it, so I don't know if this is such improve.

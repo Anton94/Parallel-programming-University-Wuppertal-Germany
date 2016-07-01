@@ -241,8 +241,6 @@ void transpose(struct ProcData* procData)
 
 	// Send each row of the matrix to the corespondig processor.
 	// Receive a row of data from the coresponding processor.
-
-	int halfProc = procData->p / 2;
 	for (i = 0; i < procData->p; ++i)
 	{
 		for (j = i; j < procData->p; ++j)
@@ -260,6 +258,171 @@ void transpose(struct ProcData* procData)
 				}
 		}
 	}
+
+	// Now lets create the new data of processor procData->rank.
+	procData->M = newM;
+	procData->N = newN;
+	// Free the old data.
+	free(procData->columnsData);
+	// Allocate the new memory for the new data.
+	allocateOneDimArrayForMultipleColsOfGivenProc(procData);
+
+	// Create extra pointers to each row of received 2D array so I can iterate on them
+	double ** pArrayData = (double**)malloc(dataToReceive.ROWS * sizeof(double*));
+	for (i = 0; i < procData->p; ++i)
+	{
+		pArrayData[i] = dataToReceive.arrayData[i];
+	}
+
+	double * pProcData = procData->columnsData; // For iteration on columnsData.
+
+	// Fill the data in the new memory
+	int idx;
+	int columnsItHolds = procData->dataCount / procData->N;
+	for (i = 0; i < columnsItHolds; ++i) // For each column it hold(in not transposed row it hold)
+	{
+		// Goes through the whole column (in not transposed row) and writes the data cycling from each other processor.
+		for (j = 0; j < procData->N; ++j)
+		{
+			*(pProcData)++ = *pArrayData[j % procData->p]++;
+		}
+	}
+
+	free(pArrayData);
+	variable2DArrayFree(&dataToSend);
+	variable2DArrayFree(&dataToReceive);
+}
+
+
+// The communication between the processors is a little like merge sort.
+// Left side of processors sends and right side recvs, and after that the opposite. (each from left side to every one to the right side)
+// Divide the range of processors by 2 and call the function for the two halfs.
+// ~ 3/2 * plogp communications in total
+// The interval is [l, r)
+void transpoeBInaryCommExchange(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r)
+{
+	// For interval with less or one processor returns. Or the processors which don't do any work here.
+	if (l >= r || r - l <= 1 || procData->rank < l || procData->rank >= r)
+		return;
+
+
+	int extra = -1; // Divide the range by 2, if the range is ODD -> keep the last one separate and after that make the comm with him.
+	if ((r - l) % 2 == 1)
+	{
+		extra = r - 1;
+		--r;
+	}
+
+	int halfSize = (r - l) / 2;
+	int mid = l + halfSize;
+	int i, rankInLocalInterval, partner;
+	
+	// Left side.
+	if (procData->rank >= l && procData->rank < mid)
+	{
+		rankInLocalInterval = procData->rank - l; // The index [0, ... , halfSize)
+		for (i = 0; i < halfSize; ++i)
+		{
+			// My partner when @i == 0 is with same @rankInLocalInterval as me.
+			partner = mid + (rankInLocalInterval + i) % halfSize;
+			//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
+			MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
+			MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+		
+		}
+	}
+	// Right side.
+	else if (procData->rank >= mid && procData->rank < r) // It's only this processors ranks left..
+	{
+		rankInLocalInterval = procData->rank - mid; // The index [0, ... , halfSize)
+		for (i = 0; i < halfSize; ++i)
+		{
+			// My partner when @i == 0 is with same @rankInLocalInterval as me.
+			partner = l + (halfSize + rankInLocalInterval - i) % halfSize;
+			//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
+			MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
+		}
+	}
+
+	if (extra >= 0)
+	{// exchange info with [l, l+1, ... , r - 1] processors with processor with rank r (the given parameter @r is decremented by 1 so originaly with last processor in the given interval -> r-1)
+		if (procData->rank == r)
+		{
+			for (i = l; i < r; ++i)
+			{
+				MPI_Send(dataToSend->arrayData[i], dataToSend->rowSizes[i], MPI_DOUBLE, i, 42, MPI_COMM_WORLD);
+				MPI_Recv(dataToReceive->arrayData[i], dataToReceive->rowSizes[i], MPI_DOUBLE, i, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			}
+		}
+		else
+		{
+			MPI_Recv(dataToReceive->arrayData[r], dataToReceive->rowSizes[r], MPI_DOUBLE, r, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			MPI_Send(dataToSend->arrayData[r], dataToSend->rowSizes[r], MPI_DOUBLE, r, 42, MPI_COMM_WORLD);
+		}
+	}
+	
+	transpoeBInaryCommExchange(procData, dataToSend, dataToReceive, l, mid); // Exchange info between Left half processors of the given interval
+	transpoeBInaryCommExchange(procData, dataToSend, dataToReceive, mid, r); // And the right half. NOTE: if there was extra one, it will exchange with all of them and no need to exchange again...
+}
+
+// Transpose the matrix over each processor.
+void transposeBinaryComm(struct ProcData* procData)
+{
+	int newM = procData->N;
+	int newN = procData->M;
+
+	// I have to send in total @p rows of data, one raw to each processor(exept mine..)
+	// When matrix is transposed the rows become columns, so this processor holds every @p entry from a
+	// matrix row so it has to send it to the processor which will hold the new column(which is the row in not transposed matrix)
+	// in transposed matrix.
+	// So, it has to send maximum of @p entris on one row, but it has every @p-th row data too, so in
+	// total every @p entry on every @p-th row of the matrix. And this is for one processor.
+	// Note: the sequence is first put the data from first needed row, after that the data for the 
+	// next needed row(p-th row from first one) and so on.
+
+	int k, i, j;
+
+	struct Variable2DArray dataToSend, dataToReceive;
+	dataToSend.ROWS = dataToReceive.ROWS = procData->p;
+	dataToSend.rowSizes = (int*)malloc(dataToSend.ROWS * sizeof(int));
+	dataToReceive.rowSizes = (int*)malloc(dataToReceive.ROWS * sizeof(int));
+	// Precalculate the total rows count that the processor need to receive and the columns it holds.
+	int columnsIHold = transposeColumnsIHold(procData),
+		rowsToReceive = transposeRowsToReceive(procData);
+	for (k = 0; k < procData->p; ++k)
+	{
+		// Calculate the data count that needs to be send to k-th processor.
+		dataToSend.rowSizes[k] = transposeGetNumberOfEntriesToSendToProc(procData, k, columnsIHold);
+		// Calculate the data count that needs to be receive from k-th processor.
+		dataToReceive.rowSizes[k] = transposeGetNumberOfEntriesToReceivFromProc(procData, k, rowsToReceive);
+	}
+
+	// Allocate the memory.
+	variable2DArrayAllocate(&dataToSend);
+	variable2DArrayAllocate(&dataToReceive);
+
+	// Fill the data in the send matrix(Note: each row holds the data for correspondig processor, e.g. 2nd row for processor 2..)
+	double * pRowData;
+	for (k = 0; k < procData->p; ++k)
+	{
+		if (k == procData->rank) // Writes it directly in receive buffer(2D array)
+			pRowData = dataToReceive.arrayData[k];
+		else
+			pRowData = dataToSend.arrayData[k];
+
+		// Each @p-th element on each @p-th row starting from k-th (basicaly each element needed for processor @k)	
+		for (i = k; i < procData->N; i += procData->p)
+		{
+			// j starts from i-th row and iterates by one column size 
+			for (j = i; j < procData->dataCount; j += procData->N) // Note: I keep it transposed, so N is the number of rows(the size of one column)!
+			{
+				*pRowData++ = procData->columnsData[j];
+			}
+		}
+	}
+
+	transpoeBInaryCommExchange(procData, &dataToSend, &dataToReceive, 0, procData->p);
 
 	// Now lets create the new data of processor procData->rank.
 	procData->M = newM;
@@ -349,7 +512,7 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
 	// Transpose the columns data.
-	transpose(procData);
+	transposeBinaryComm(procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
 	// Get the matrix data from all processes.
@@ -424,8 +587,8 @@ int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
 
-	test(1, 150, 1, 150, 0, 0);
-	//test(1000, 1100, 1000, 1100, 0, 0);
+//	test(100, 120, 100, 120, 0, 0);
+	test(5000, 5010, 5000, 5010, 0, 0);
 	//test(200, 290, 200, 290, 1, 0);
 	//test(220, 240, 220, 240, 1, 0);
 //	test(11, 11, 9, 9, 1, 1);
