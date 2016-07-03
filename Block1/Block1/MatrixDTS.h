@@ -15,6 +15,12 @@ struct ProcData
 	int M, N;
 };
 
+// Returns the entry value of the matrix on row @i and column j.
+// The default values for the matrix Aij = j + i / 1000 (transposed...).
+double getDTSEntryValue(int i, int j);
+
+// Returns -1 for every entry value.
+double getMinusOne(int i, int j);
 
 int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N);
 

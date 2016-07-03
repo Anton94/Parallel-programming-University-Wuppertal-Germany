@@ -112,22 +112,8 @@ void matrixFree(struct Matrix* matrix)
 	matrix->matrixData = NULL;
 }
 
-// Sets the default values for the matrix Aij = j + i / 1000 (transposed...)
-void matrixSetDefaultValues(struct Matrix* matrix)
-{
-	if (matrix->matrixData == NULL)
-		return; // A little safty..
-	int i, j;
-	for (i = 0; i < matrix->M; ++i)
-	{
-		double sum = i / 1000.0;
-		for (j = 0; j < matrix->N; ++j)
-		{
-			matrix->matrixData[i][j] = j + sum;
-		}
-	}
-}
-void matrixSetMinusOnce(struct Matrix* matrix)
+// Sets the the values for the all matrix entries by the given @pFunc function, which for every i and j (row and column indexes) gives double value.
+void matrixSetValues(struct Matrix* matrix, double(*pFunc)(int, int))
 {
 	if (matrix->matrixData == NULL)
 		return; // A little safty..
@@ -136,7 +122,7 @@ void matrixSetMinusOnce(struct Matrix* matrix)
 	{
 		for (j = 0; j < matrix->N; ++j)
 		{
-			matrix->matrixData[i][j] = -1.0;
+			matrix->matrixData[i][j] = pFunc(i, j);
 		}
 	}
 }

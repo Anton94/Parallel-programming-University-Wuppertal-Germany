@@ -37,11 +37,8 @@ int matrixAllocate(struct Matrix* matrix, int m, int n);
 // Frees the allocated memory for the matrix. Sets M and N to 0.
 void matrixFree(struct Matrix* matrix);
 
-// Sets the default values for the matrix Aij = j + i / 1000 (transposed...)
-void matrixSetDefaultValues(struct Matrix* matrix);
-
-// Sets all entries to -1.
-void matrixSetMinusOnce(struct Matrix* matrix);
+// Sets the the values for the all matrix entries by the given @pFunc function, which for every i and j (row and column indexes) gives double value.
+void matrixSetValues(struct Matrix* matrix, double (*pFunc)(int, int));
 
 // Prints the matrix to the standard output.
 void matrixPrint(const struct Matrix * matrix);

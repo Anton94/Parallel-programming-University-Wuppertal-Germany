@@ -3,6 +3,22 @@
 #include "MatrixDTS.h"
 #include "TwoDimArrays.h"
 
+
+
+// Returns the entry value of the matrix on row @i and column j.
+// The default values for the matrix Aij = j + i / 1000 (transposed...).
+double getDTSEntryValue(int i, int j)
+{
+	return (double)i / 1000.0 + (double)j;
+}
+
+// Returns -1 for every entry value.
+double getMinusOne(int i, int j)
+{
+	return -1.0;
+}
+
+
 int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N)
 {
 	int dataCount = 0;
@@ -587,7 +603,7 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 		matrixAllocate(&matrixToSend, procData->M, procData->N);	 // NOTE: here I give transposed matrix, so swaped number of rows and cols.
 		matrixAllocate(&matrixToReceive, procData->N, procData->M);// Transposed one but the returned is also transposed
 
-		matrixSetDefaultValues(&matrixToSend);
+		matrixSetValues(&matrixToSend, &getDTSEntryValue);
 
 		if (outputing)
 		{
