@@ -3,8 +3,6 @@
 #include "MatrixDTS.h"
 #include "TwoDimArrays.h"
 
-
-
 // Returns the entry value of the matrix on row @i and column j.
 // The default values for the matrix Aij = j + i / 1000 (transposed...).
 double getDTSEntryValue(int i, int j)
@@ -18,50 +16,10 @@ double getMinusOne(int i, int j)
 	return -1.0;
 }
 
-
-int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N)
-{
-	int dataCount = 0;
-	// The matrix is transposed, so M rows , each row represent a column
-	// j-th row is in @rank processor if rank === j mod p
-	dataCount = M / p;
-	// If there are more columns(N != q.p ; q some pos. number)
-	if (rank < M % p)
-		++dataCount;
-	// Now dataCount has the number of columns, multiply it with N to get the number of cells.
-	dataCount *= N;
-
-	return dataCount;
-}
-
-void allocateOneDimArrayForMultipleColsOfGivenProc(struct ProcData * procData)
-{
-	procData->dataCount = getTheTotalNumberOfElementsInProcColumns(procData->rank, procData->p, procData->M, procData->N);
-
-	procData->columnsData = (double*)malloc(procData->dataCount * sizeof(double));
-	// if (!columnsData)
-	// error ....
-}
-
-void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N)
-{
-	int i, j;
-	// Each row @i mod p == rank - write it's data to the array
-	// Start from row @rank and increment the rows count by p, this are the proc @rank columns.
-	for (i = rank; i < M; i += p)
-	{
-		for (j = 0; j < N; j++)
-		{
-			*data = matrix->matrixData[i][j];
-			++data;
-		}
-	}
-}
-
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
 // @M is the number of rows and @N is the number of columns.
 // Returns pointer to the new allocated memory for the columns...
-void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
+void distributeColumnsDTS(const struct Matrix* matrix, struct ProcData * procData)
 {
 	// Each processor has to allocate memory for it`s columns.
 	// I will store them in one array - first column after that second and so on.
@@ -108,7 +66,7 @@ void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
 }
 
 // Collects the columns of all processors and processor 0 writes it to the given matrix.
-void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
+void selectColumnsDTS(const struct Matrix* matrix, struct ProcData * procData)
 {
 	if (procData->rank == 0)
 	{
@@ -564,14 +522,6 @@ void transposeCyclicly(struct ProcData* procData)
 	free(pArrayData);
 	variable2DArrayFree(&dataToSend);
 	variable2DArrayFree(&dataToReceive);
-}
-
-
-// Deletes the allocated memory for the processor columns.
-void freeProcessAllocatedMemory(struct ProcData * procData)
-{
-	free(procData->columnsData);
-	procData->dataCount = 0;
 }
 
 /// Main functionality.

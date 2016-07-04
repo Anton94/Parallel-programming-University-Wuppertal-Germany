@@ -24,12 +24,24 @@
     <ClCompile Include="MatrixDTS.c">
       <Filter>Header Files\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="GaussianElimination.c">
+      <Filter>Header Files\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ProcessorUtilities.c">
+      <Filter>Header Files\Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TwoDimArrays.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="MatrixDTS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GaussianElimination.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProcessorUtilities.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

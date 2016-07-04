@@ -79,12 +79,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="GaussianElimination.c" />
     <ClCompile Include="MatrixDTS.c" />
+    <ClCompile Include="ProcessorUtilities.c" />
     <ClCompile Include="TwoDimArrays.c" />
     <ClCompile Include="Source.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="GaussianElimination.h" />
     <ClInclude Include="MatrixDTS.h" />
+    <ClInclude Include="ProcessorUtilities.h" />
     <ClInclude Include="TwoDimArrays.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -2,10 +2,12 @@
 #include "mpi.h"
 #include "TwoDimArrays.h"
 #include "MatrixDTS.h"
+#include "GaussianElimination.h"
 
+// MatrixDTS -> matrix distribute transpose select.
 
-// Testing the functionality for multiple matrixes with row sizes from [a, b] and column sizes from [c, d]
-void test(int a, int b, int c, int d, int outputingTestStatus, int outputingMatrixValues)
+// Testing the functionality of MatrixDTS for multiple matrixes with row sizes from [a, b] and column sizes from [c, d]
+void testMatrixDTS(int a, int b, int c, int d, int outputingTestStatus, int outputingMatrixValues)
 {
 	struct ProcData procData;
 
@@ -49,11 +51,11 @@ int main(int argc, char* argv[])
 {
 	MPI_Init(&argc, &argv);
 
-//	test(100, 120, 100, 120, 0, 0);
-//	test(5000, 5001, 5000, 5001, 0, 0);
-	//test(200, 290, 200, 290, 1, 0);
-	//test(220, 240, 220, 240, 1, 0);
-	test(11, 11, 9, 10, 1, 1);
+//	testMatrixDTS(1, 300, 1, 300, 0, 0);
+//	testMatrixDTS(5000, 5001, 5000, 5001, 0, 0);
+	//testMatrixDTS(200, 290, 200, 290, 1, 0);
+	testMatrixDTS(220, 240, 220, 240, 1, 0);
+	//testMatrixDTS(11, 11, 9, 10, 1, 1);
 
 	MPI_Finalize();
 

@@ -22,19 +22,13 @@ double getDTSEntryValue(int i, int j);
 // Returns -1 for every entry value.
 double getMinusOne(int i, int j);
 
-int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N);
-
-void allocateOneDimArrayForMultipleColsOfGivenProc(struct ProcData * procData);
-
-void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N);
-
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
 // @M is the number of rows and @N is the number of columns.
 // Returns pointer to the new allocated memory for the columns...
-void distributeColumns(const struct Matrix* matrix, struct ProcData * procData);
+void distributeColumnsDTS(const struct Matrix* matrix, struct ProcData * procData);
 
 // Collects the columns of all processors and processor 0 writes it to the given matrix.
-void selectColumns(const struct Matrix* matrix, struct ProcData * procData);
+void selectColumnsDTS(const struct Matrix* matrix, struct ProcData * procData);
 
 // Returns the total number of columns I hold.
 int transposeColumnsIHold(struct ProcData* procData);
@@ -66,9 +60,6 @@ void transposeBinaryComm(struct ProcData* procData);
 // Cyclically somehow..... 
 // NOTE: If the send and receive communication is not in one, it wont work...
 void transposeCyclicly(struct ProcData* procData);
-
-// Deletes the allocated memory for the processor columns.
-void freeProcessAllocatedMemory(struct ProcData * procData);
 
 /// Main functionality.
 // runs the functionality for matrix with @ROWS number of rows, @COLS number of columns and
