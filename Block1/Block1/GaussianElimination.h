@@ -31,6 +31,8 @@
 // Bij = i + j
 double getGEEntryValue(struct ProcData * procData, int i, int j);
 
+// Execute kji column pivoting parallel Gaussian elimination
+void gaussianElimination(struct ProcData* procData);
 
 /// Main functionality.
 // runs the functionality for matrix A with dimension sizes @dimA - number of rows(and same number of columns)

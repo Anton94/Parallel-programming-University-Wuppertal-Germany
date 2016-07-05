@@ -4,8 +4,10 @@
 
 // Returns the entry value of the matrix on row @i and column j.
 // The default values for the matrix Aij = j + i / 1000 (transposed...).
-double getDTSEntryValue(int i, int j)
+double getDTSEntryValue(struct Matrix * matrix, int i, int j)
 {
+	if (i > matrix->M || j > matrix->N || i < 0 || j < 0)
+		return -1.1;
 	return (double)i / 1000.0 + (double)j;
 }
 
@@ -16,6 +18,7 @@ double getMinusOne(int i, int j)
 }
 
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
+// @procData->M and procData->N:
 // @M is the number of cols and @N is the number of rows. 
 // NOTE: In the ORIGINAL matrix(which is transposed of this one @matrix).
 //		 SO, @M in the matrix struture is the number of rows of @matrix, but it's transposed of the one

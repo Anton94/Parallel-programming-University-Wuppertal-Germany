@@ -113,7 +113,7 @@ void matrixFree(struct Matrix* matrix)
 }
 
 // Sets the the values for the all matrix entries by the given @pFunc function, which for every i and j (row and column indexes) gives double value.
-void matrixSetValues(struct Matrix* matrix, double(*pFunc)(int, int))
+void matrixSetValues(struct Matrix* matrix, double(*pFunc)(struct Matrix* , int, int))
 {
 	if (matrix->matrixData == NULL)
 		return; // A little safty..
@@ -122,7 +122,7 @@ void matrixSetValues(struct Matrix* matrix, double(*pFunc)(int, int))
 	{
 		for (j = 0; j < matrix->N; ++j)
 		{
-			matrix->matrixData[i][j] = pFunc(i, j);
+			matrix->matrixData[i][j] = pFunc(matrix, i, j);
 		}
 	}
 }

@@ -9,7 +9,7 @@
 
 // Returns the entry value of the matrix on row @i and column j.
 // The default values for the matrix Aij = j + i / 1000 (transposed...).
-double getDTSEntryValue(int i, int j);
+double getDTSEntryValue(struct Matrix * matrix, int i, int j);
 
 // Returns -1 for every entry value.
 double getMinusOne(int i, int j);

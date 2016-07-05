@@ -23,7 +23,7 @@ void testMatrixDTS(int a, int b, int c, int d, int outputingTestStatus, int outp
 	{
 		for (j = c; j <= d; ++j)
 		{
-			res = functionalityDTS(&procData, i, j, outputingMatrixValues, &tSum);
+			res = functionalityGE(&procData, i, j, outputingMatrixValues, &tSum);
 			if (procData.rank == 0)
 			{
 				if (!res)
@@ -55,6 +55,7 @@ int main(int argc, char* argv[])
 //	testMatrixDTS(5000, 5001, 5000, 5001, 0, 0);
 	//testMatrixDTS(200, 290, 200, 290, 1, 0);
 	testMatrixDTS(220, 240, 220, 240, 1, 0);
+	testMatrixDTS(5, 5, 2, 2, 1, 1);
 //	testMatrixDTS(11, 11, 9, 10, 1, 1);
 
 	MPI_Finalize();

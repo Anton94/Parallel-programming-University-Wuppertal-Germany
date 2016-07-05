@@ -38,7 +38,7 @@ int matrixAllocate(struct Matrix* matrix, int m, int n);
 void matrixFree(struct Matrix* matrix);
 
 // Sets the the values for the all matrix entries by the given @pFunc function, which for every i and j (row and column indexes) gives double value.
-void matrixSetValues(struct Matrix* matrix, double (*pFunc)(int, int));
+void matrixSetValues(struct Matrix* matrix, double (*pFunc)(struct Matrix*, int, int));
 
 // Prints the matrix to the standard output.
 void matrixPrint(const struct Matrix * matrix);
