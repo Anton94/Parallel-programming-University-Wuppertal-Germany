@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include "mpi.h"
 #include "MatrixDTS.h"
-#include "TwoDimArrays.h"
 
 // Returns the entry value of the matrix on row @i and column j.
 // The default values for the matrix Aij = j + i / 1000 (transposed...).
@@ -17,13 +16,20 @@ double getMinusOne(int i, int j)
 }
 
 // Distributes columns of MxN matrix over the processors (processor j holds column i if j === i mod p)
-// @M is the number of rows and @N is the number of columns.
-// Returns pointer to the new allocated memory for the columns...
-void distributeColumnsDTS(const struct Matrix* matrix, struct ProcData * procData)
+// @M is the number of cols and @N is the number of rows. 
+// NOTE: In the ORIGINAL matrix(which is transposed of this one @matrix).
+//		 SO, @M in the matrix struture is the number of rows of @matrix, but it's transposed of the one
+//		 that I need to distribute, so @M is the number of columns in the matrix that I need to distribute
+//		 (@N analogously)
+//		 All of this is because of the fact that C is row-wise 2D array, and I need to distribute the 
+//		 matrix column-wise!
+void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
 {
 	// Each processor has to allocate memory for it`s columns.
 	// I will store them in one array - first column after that second and so on.
-	// Another approach is like 2D array, but we will see which one is better. (iteration is not so good)
+	// Another approach is like 2D array, but we will see which one is better. 
+	// (iteration is not so good in the 2D array)
+	// Better send/receive of one dim array than 2D one.
 	allocateOneDimArrayForMultipleColsOfGivenProc(procData);
 
 	// I chose the 0 processor to distribute the matrix
@@ -66,7 +72,7 @@ void distributeColumnsDTS(const struct Matrix* matrix, struct ProcData * procDat
 }
 
 // Collects the columns of all processors and processor 0 writes it to the given matrix.
-void selectColumnsDTS(const struct Matrix* matrix, struct ProcData * procData)
+void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 {
 	if (procData->rank == 0)
 	{
@@ -74,7 +80,7 @@ void selectColumnsDTS(const struct Matrix* matrix, struct ProcData * procData)
 		double * tempBuffer = (double*)malloc(procData->dataCount * sizeof(double));
 		double * pTempBuffer;
 		int tempReceivedSize;
-		// Write own data to the matrix.
+		// Write own data to the matrix. TODO: do-while loop and remove the 'if'
 		for (int i = 0; i < procData->p; ++i)
 		{
 			if (i == 0)
@@ -87,7 +93,7 @@ void selectColumnsDTS(const struct Matrix* matrix, struct ProcData * procData)
 				MPI_Recv(tempBuffer, tempReceivedSize, MPI_DOUBLE, i, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 				pTempBuffer = tempBuffer;
 			}
-			int k, j;
+			int k, j; 
 			for (k = i; k < matrix->M; k += procData->p) // Write the data to all k rows where k belongs to i-th processor
 			{
 				for (j = 0; j < matrix->N; ++j) // Write all data.
@@ -528,7 +534,7 @@ void transposeCyclicly(struct ProcData* procData)
 // runs the functionality for matrix with @ROWS number of rows, @COLS number of columns and
 // if outputing is TRUE it prints the matrixes and 
 // adds the time for distribute, transpose and select to @tSum EXEPT the time for creating and freeing the matrixes. (only inportant for @rank = 0
-int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing, double * tSum)
+int functionalityDTS(struct ProcData * procData, int ROWS, int COLS, int outputing, double * tSum)
 {
 	struct Matrix matrixToSend, matrixToReceive; // Only used in processor with rank 0.
 	int dims[2];
@@ -541,8 +547,8 @@ int functionality(struct ProcData * procData, int ROWS, int COLS, int outputing,
 
 	MPI_Bcast(dims, 2, MPI_INT, 0, MPI_COMM_WORLD);
 	// Keep the data transposed.
-	procData->M = dims[1];
-	procData->N = dims[0];
+	procData->M = dims[1]; // Number of columns of original matrix.
+	procData->N = dims[0]; // Number of rows of original matrix.
 
 	/* Create the matrixes in proc 0 */
 	// It`s C , so I will keep the matrix 'transposed', because I want to send whole columns,

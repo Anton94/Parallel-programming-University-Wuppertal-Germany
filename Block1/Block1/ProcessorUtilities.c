@@ -2,6 +2,8 @@
 #include "TwoDimArrays.h"
 #include "ProcessorUtilities.h"
 
+// Returns tohe total number of entries of the columns of the given processor rank(@rank).
+// I don't use the structur ProcData, because it may be called for different processors.
 int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N)
 {
 	int dataCount = 0;
@@ -17,6 +19,9 @@ int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N)
 	return dataCount;
 }
 
+// Allocates vector for the data of all columns of the given processor.
+// Column one after that column two and so on...
+// Also sets the total number of entries in all columns which are in the given processor.
 void allocateOneDimArrayForMultipleColsOfGivenProc(struct ProcData * procData)
 {
 	procData->dataCount = getTheTotalNumberOfElementsInProcColumns(procData->rank, procData->p, procData->M, procData->N);
@@ -26,6 +31,7 @@ void allocateOneDimArrayForMultipleColsOfGivenProc(struct ProcData * procData)
 	// error ....
 }
 
+// I don't use ProcData structure because it's not necessary to fill own data, but for other processor
 void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N)
 {
 	int i, j;
