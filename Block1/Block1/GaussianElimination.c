@@ -2,6 +2,8 @@
 #include <math.h>
 #include "mpi.h"
 #include "GaussianElimination.h"
+#include "ProcessorUtilities.h"
+#include "TwoDimArrays.h"
 
 #define PI 3.141592653589793238462643383
 
@@ -36,27 +38,34 @@ void swap(double *a, double *b)
 
 // Execute kji column pivoting parallel Gaussian elimination.
 // Each processor has it's columns in the original matrix, one after another in a vector.
-// Here it may be better to use 2D vector, instead of 1D.
+// TODO: Broadcast the pivot index and the multipliers at the same time.
 void gaussianElimination(struct ProcData* procData)
 {
-	int k, j, i,
+	int k, j, i, kPlusOne,
 		pivotIndex,
 		mineColumnIndex,
 		root;
 
-	double * myData = procData->columnsData,
-		*pEndData;
+	double * myData,
+		* pEndData,
+		* l;
 
-	double * l = (double*)malloc(procData->N * sizeof(double)); // Allocate temp buffer for the multipliers.
+	double epsilon = 0.0000000001;
 
-	for (k = 0; k < procData->N; ++k)
+	pEndData = procData->columnsData + getTheTotalNumberOfElementsInProcColumns(procData->rank, procData->p, procData->N, procData->N); // Get the total number of entries in my columns from the part of A matrix.
+
+	l = (double*)malloc(procData->N * sizeof(double)); // Allocate temp buffer for the multipliers.
+
+	kPlusOne = 1;
+	for (k = 0; k < procData->N; ++k, ++kPlusOne)
 	{
+		
 		root = k % procData->p;
 		if (procData->rank == root)
 		{
 			mineColumnIndex = k / procData->p; // Determine which of my columns is this column @k
 			pivotIndex = k;
-			myData += mineColumnIndex*procData->N; // Start from the column K (which is (k/p)-th of mine columns)
+			myData = procData->columnsData + mineColumnIndex*procData->N; // Start from the column K (which is (k/p)-th of mine columns)
 
 			// Column pivoting.
 			for (i = k + 1; i < procData->N; ++i)
@@ -65,12 +74,26 @@ void gaussianElimination(struct ProcData* procData)
 					pivotIndex = i;
 			}
 
-			myData = procData->columnsData + mineColumnIndex*procData->N; //TODO
-
-			// Calculate the multipliers.
-			for (i = k + 1; i < procData->N; ++i)
+			// Interchange data of rows @pivotIndex and @k.
+			if (pivotIndex != k)
 			{
-				l[i] = myData[i] = myData[i] / myData[k];
+				myData = procData->columnsData;
+				pEndData = procData->columnsData + procData->dataCount;
+				while (myData < pEndData)
+				{
+					swap(&myData[k], &myData[pivotIndex]);
+					myData += procData->N;
+				}
+			}
+
+			myData = procData->columnsData + mineColumnIndex*procData->N; //TODO
+			if (!(myData[k] - 0 < epsilon))
+			{
+				// Calculate the multipliers.
+				for (i = k + 1; i < procData->N; ++i)
+				{
+					l[i] = myData[i] = myData[i] / myData[k];
+				}
 			}
 		}
 
@@ -80,36 +103,40 @@ void gaussianElimination(struct ProcData* procData)
 		if (pivotIndex != k)
 		{
 			myData = procData->columnsData;
-			for (i = procData->rank; i < procData->M; i += procData->p)
+			pEndData = procData->columnsData + procData->dataCount;
+			while (myData < pEndData)
 			{
-				swap(&myData[i], &myData[pivotIndex]);
+				swap(&myData[k], &myData[pivotIndex]);
 				myData += procData->N;
 			}
 		}
 
-		if (k + 1 < procData->N)
+		if (kPlusOne < procData->N)
 		{
 			// Distribute the multipliers. L[k+1:N, k]
-			MPI_Bcast(l + k + 1, procData->N - k - 1, MPI_DOUBLE, root, MPI_COMM_WORLD);
+			MPI_Bcast(l + kPlusOne, procData->N - k - 1, MPI_DOUBLE, root, MPI_COMM_WORLD);
 
 			// Update the trailing submatrix.
 
 			// Determin the starting column (of K+1xK+1 trailing matrix) of the curren processor.
-			mineColumnIndex = procData->rank + procData->p / (k + 1); // It starts from @rank position.
-			if (mineColumnIndex * procData->p < k + 1)
-				++mineColumnIndex;
-			pEndData = procData->columnsData + mineColumnIndex * procData->N;
-			while (myData < pEndData) // While I have more columns to update
+			int startColumn;
+			startColumn = kPlusOne / procData->p; // Get mine column index closed to the column K+1 in the matrix.
+			if (procData->rank < kPlusOne % procData->p)
+				++startColumn;
+			double * pColumnsDataStart = procData->columnsData + startColumn * procData->N; // Start index, where is my first column from the trailing K+1xK+1 submatrix.
+
+			while (pColumnsDataStart < pEndData) // While I have more columns to update
 			{
-				for (i = k + 1; i < procData->N; ++i)
+				for (i = kPlusOne; i < procData->N; ++i)
 				{
-					myData[i] = myData[i] - l[i] * myData[k];
+					pColumnsDataStart[i] = pColumnsDataStart[i] - l[i] * pColumnsDataStart[k];
 				}
-				myData += procData->N;
+
+				pColumnsDataStart += procData->N;
 			}
 		}		
 	}
-	//TODO FIX ERROR
+
 	free(l);
 }
 
