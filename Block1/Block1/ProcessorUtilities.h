@@ -31,7 +31,7 @@ int getTheTotalNumberOfElementsInProcColumns(int rank, int p, int M, int N);
 void allocateOneDimArrayForMultipleColsOfGivenProc(struct ProcData * procData);
 
 // I don't use ProcData structure because it's not necessary to fill own data, but for other processor.
-void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N);
+double* fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N);
 
 // Deletes the allocated memory for the processor columns.
 void freeProcessAllocatedMemory(struct ProcData * procData);

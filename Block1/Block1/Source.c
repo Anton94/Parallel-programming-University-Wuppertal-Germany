@@ -95,13 +95,15 @@ int main(int argc, char* argv[])
 	MPI_Init(&argc, &argv);
 
 //	testMatrixDTS(1, 300, 1, 300, 0, 0);
-//	testMatrixDTS(5000, 5001, 5000, 5001, 0, 0);
+	testMatrixDTS(5000, 5001, 5000, 5002, 0, 0);
 //	testMatrixDTS(200, 290, 200, 290, 1, 0);
+//	testMatrixDTS(11, 11, 9, 10, 1, 1);
+//	testMatrixDTS(5, 5, 2, 2, 1, 1);
 //	testMatrixDTS(11, 11, 9, 10, 1, 1);
 
 //	testMatrixGE(1, 150, 1, 150, 0, 0);
-	testMatrixGE(220, 240, 220, 240, 1, 0);
-	testMatrixGE(5, 5, 2, 2, 1, 1);
+//	testMatrixGE(220, 240, 220, 240, 1, 0);
+//	testMatrixGE(5, 5, 2, 2, 1, 1);
 
 	MPI_Finalize();
 

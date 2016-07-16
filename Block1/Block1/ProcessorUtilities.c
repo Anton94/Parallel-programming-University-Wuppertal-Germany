@@ -31,8 +31,9 @@ void allocateOneDimArrayForMultipleColsOfGivenProc(struct ProcData * procData)
 	// error ....
 }
 
-// I don't use ProcData structure because it's not necessary to fill own data, but for other processor
-void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N)
+// I don't use ProcData structure because it's not necessary to fill own data, but for other processor.
+// Returns a pointer to the cell which is one after the last writen value in the given vector @data.
+double* fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, int rank, int p, int M, int N)
 {
 	int i, j;
 	// Each row @i mod p == rank - write it's data to the array
@@ -45,6 +46,8 @@ void fillDataOfOneDimColumnsArray(const struct Matrix * matrix, double * data, i
 			++data;
 		}
 	}
+
+	return data;
 }
 
 // Deletes the allocated memory for the processor columns.

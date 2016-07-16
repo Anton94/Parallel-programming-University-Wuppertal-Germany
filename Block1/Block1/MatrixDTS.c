@@ -74,6 +74,119 @@ void distributeColumns(const struct Matrix* matrix, struct ProcData * procData)
 	}
 }
 
+
+
+// Distribute the data using MPI_scatterv. Drowback - need the matrix to be in one array.
+void distributeColumnsWithScatterV(const struct Matrix* matrix, struct ProcData * procData)
+{
+	// Each processor has to allocate memory for it`s columns.
+	// I will store them in one array - first column after that second and so on.
+	// Another approach is like 2D array, but we will see which one is better. 
+	// (iteration is not so good in the 2D array)
+	// Better send/receive of one dim array than 2D one.
+	allocateOneDimArrayForMultipleColsOfGivenProc(procData);
+
+	double * dataToSend = NULL; // A vector with the data that needs to be send.
+	int * sendCounts = NULL; // The number of data for each processor.
+	int * displacements = NULL; // The starting positions in the vector for the data to each processor.
+
+	//sendCounts = (int*)malloc(procData->p * sizeof(int)); // The number of data to send to each processor.(index == processor rank)
+	//displacements = (int*)malloc(procData->p * sizeof(int)); // The starting positions in the vector for the data to each processor.
+
+	// I chose the 0 processor to distribute the matrix
+	if (procData->rank == 0)
+	{
+		int totalNumberOfEntries = procData->M * procData->N;
+		dataToSend = (double*)malloc(totalNumberOfEntries * sizeof(double));
+		sendCounts = (int*)malloc(procData->p * sizeof(int)); // The number of data to send to each processor.(index == processor rank)
+		displacements = (int*)malloc(procData->p * sizeof(int)); // The starting positions in the vector for the data to each processor.
+
+		double * pDataToSend = dataToSend,
+			*pNextDataToSend;
+
+		// Write the data of the matrix in the vector, first the columns of processor 0, after that the columns for processor 1 and so on.
+		int i = 0;
+		double * pEndDataToSend = pDataToSend + totalNumberOfEntries;
+		while (pDataToSend < pEndDataToSend)
+		{
+			displacements[i] = pDataToSend - dataToSend; // Displacement from the beginning of the vector.
+
+			// Fill the data for processor with rank @i.
+			pNextDataToSend = fillDataOfOneDimColumnsArray(matrix, pDataToSend, i, procData->p, procData->M, procData->N);			
+			sendCounts[i] = pNextDataToSend - pDataToSend; // Count of elements			
+			pDataToSend = pNextDataToSend;
+
+			++i;
+		}
+
+		// Fill the left processors counts and dipspl with 0's.
+		while (i < procData->p)
+		{
+			sendCounts[i] = displacements[i] = 0;
+			++i;
+		}
+	}
+
+	MPI_Scatterv(dataToSend, sendCounts, displacements, MPI_DOUBLE, procData->columnsData, procData->dataCount, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	free(sendCounts);
+	free(displacements);
+	free(dataToSend);
+}
+
+
+
+// Collects the columns of all processors and processor 0 writes it to the given matrix.
+void selectColumnsWithGatherV(const struct Matrix* matrix, struct ProcData * procData)
+{
+	double * dataToRecv = NULL; // A vector with the data that needs to be received from all processors.
+	int * recvCounts = NULL; // The number of data to be received from each processor.(index == processor rank)
+	int * displacements = NULL; // The starting positions in the vector for the data to each processor.
+
+	// Calculate the displacements and counts of elements from each processor.
+	if (procData->rank == 0)
+	{
+		int totalNumberOfEntries = procData->M * procData->N;
+		dataToRecv = (double*)malloc(totalNumberOfEntries * sizeof(double));
+		recvCounts = (int*)malloc(procData->p * sizeof(int)); // The number of data to send to each processor.(index == processor rank)
+		displacements = (int*)malloc(procData->p * sizeof(int)); // The starting positions in the vector for the data to each processor.
+
+		int i;
+		double * pDataToRecv = dataToRecv;
+		for (i = 0; i < procData->p; ++i)
+		{
+			recvCounts[i] = getTheTotalNumberOfElementsInProcColumns(i, procData->p, procData->M, procData->N);
+			displacements[i] = pDataToRecv - dataToRecv;
+			pDataToRecv += recvCounts[i];
+		}
+
+	}
+
+	MPI_Gatherv(procData->columnsData, procData->dataCount, MPI_DOUBLE, dataToRecv, recvCounts, displacements, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	
+	// Write the received data to the matrix.
+	if (procData->rank == 0)
+	{
+		double * pDataToRecv = dataToRecv;
+		for (int i = 0; i < procData->p; ++i)
+		{
+			int k, j;
+			for (k = i; k < matrix->M; k += procData->p) // Write the data to all k rows where k belongs to i-th processor
+			{
+				for (j = 0; j < matrix->N; ++j) // Write all data.
+				{
+					matrix->matrixData[k][j] = *pDataToRecv;
+					++pDataToRecv;
+				}
+			}
+		}
+	}
+
+	free(recvCounts);
+	free(displacements);
+	free(dataToRecv);
+}
+
 // Collects the columns of all processors and processor 0 writes it to the given matrix.
 void selectColumns(const struct Matrix* matrix, struct ProcData * procData)
 {
@@ -576,15 +689,15 @@ int functionalityDTS(struct ProcData * procData, int ROWS, int COLS, int outputi
 	t1 = MPI_Wtime();
 
 	// Now lets distribute the matrix.(which is stored by columns) // Transposed dimentions COLS <-> ROWS
-	distributeColumns(&matrixToSend, procData);
+	distributeColumnsWithScatterV(&matrixToSend, procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
 	// Transpose the columns data.
-	transposeCyclicly(procData);
+	transposeBinaryComm(procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
 	// Get the matrix data from all processes.
-	selectColumns(&matrixToReceive, procData);
+	selectColumnsWithGatherV(&matrixToReceive, procData);
 	MPI_Barrier(MPI_COMM_WORLD); // synchonization.
 
 	// Free the memory allocated for the columns.

@@ -24,8 +24,15 @@ double getMinusOne(int i, int j);
 //		 matrix column-wise!
 void distributeColumns(const struct Matrix* matrix, struct ProcData * procData);
 
+// Distribute the data using MPI_Scatterv.
+void distributeColumnsWithScatterV(const struct Matrix* matrix, struct ProcData * procData);
+
 // Collects the columns of all processors and processor 0 writes it to the given matrix.
 void selectColumns(const struct Matrix* matrix, struct ProcData * procData);
+
+// Collects the columns of all processors to processor 0 and processor 0 writes it to the given matrix.
+// Using MPI_Gatherv routine.
+void selectColumnsWithGatherV(const struct Matrix* matrix, struct ProcData * procData);
 
 // Returns the total number of columns I hold.
 int transposeColumnsIHold(struct ProcData* procData);
