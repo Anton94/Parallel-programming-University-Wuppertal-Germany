@@ -52,12 +52,22 @@ void transpose(struct ProcData* procData);
 // The communication between the processors is a little like merge sort.
 // Left side of processors sends and right side recvs, and after that the opposite. (each from left side to every one to the right side)
 // Divide the range of processors by 2 and call the function for the two halfs.
-// ~ 3/2 * plogp communications in total
+// ~ 3 * p  communications in total
 // The interval is [l, r)
-void transpoeBInaryCommExchange(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r);
+void transpoeBinaryCommExchange(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r);
+
+// The communication between the processors is a little like merge sort.
+// Left side of processors sends and right side recvs, and after that the opposite. (each from left side to every one to the right side)
+// Divide the range of processors by 2 and call the function for the two halfs.
+// If the number of processors are ODD, make left side with one more processor than the right side
+// and in the right side add Ghost processor, with him noone communicates.
+// So in each level of binary tree structure of the recursion there will be an extra communication(PARALLEL), which is in total ~logP communications.
+// ~ 2 * p + logP communications in total.
+// The interval is [l, r)
+void transpoeBinaryCommExchangeWithGhostProcessor(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r);
 
 // Transpose the matrix over each processor.
-void transposeBinaryComm(struct ProcData* procData);
+void transposeBinaryComm(struct ProcData* procData); 
 
 // Transpose the matrix over each processor.
 // Send the data to 'i-th' next processor and receive it from 'i-th' previous.

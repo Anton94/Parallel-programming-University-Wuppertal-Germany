@@ -381,14 +381,13 @@ void transpose(struct ProcData* procData)
 // The communication between the processors is a little like merge sort.
 // Left side of processors sends and right side recvs, and after that the opposite. (each from left side to every one to the right side)
 // Divide the range of processors by 2 and call the function for the two halfs.
-// ~ 3/2 * plogp communications in total
+// ~ 3 * p  communications in total
 // The interval is [l, r)
-void transpoeBInaryCommExchange(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r)
+void transpoeBinaryCommExchange(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r)
 {
 	// For interval with less or one processor returns. Or the processors which don't do any work here.
 	if (l >= r || r - l <= 1 || procData->rank < l || procData->rank >= r)
 		return;
-
 
 	int extra = -1; // Divide the range by 2, if the range is ODD -> keep the last one separate and after that make the comm with him.
 	if ((r - l) % 2 == 1)
@@ -409,7 +408,6 @@ void transpoeBInaryCommExchange(struct ProcData* procData, struct Variable2DArra
 		{
 			// My partner when @i == 0 is with same @rankInLocalInterval as me.
 			partner = mid + (rankInLocalInterval + i) % halfSize;
-			//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
 			MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
 			MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
@@ -423,7 +421,6 @@ void transpoeBInaryCommExchange(struct ProcData* procData, struct Variable2DArra
 		{
 			// My partner when @i == 0 is with same @rankInLocalInterval as me.
 			partner = l + (halfSize + rankInLocalInterval - i) % halfSize;
-			//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
 			MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 			MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
 		}
@@ -446,8 +443,77 @@ void transpoeBInaryCommExchange(struct ProcData* procData, struct Variable2DArra
 		}
 	}
 
-	transpoeBInaryCommExchange(procData, dataToSend, dataToReceive, l, mid); // Exchange info between Left half processors of the given interval
-	transpoeBInaryCommExchange(procData, dataToSend, dataToReceive, mid, r); // And the right half. NOTE: if there was extra one, it will exchange with all of them and no need to exchange again...
+	transpoeBinaryCommExchange(procData, dataToSend, dataToReceive, l, mid); // Exchange info between Left half processors of the given interval
+	transpoeBinaryCommExchange(procData, dataToSend, dataToReceive, mid, r); // And the right half. NOTE: if there was extra one, it will exchange with all of them and no need to exchange again...
+}
+
+
+// The communication between the processors is a little like merge sort.
+// Left side of processors sends and right side recvs, and after that the opposite. (each from left side to every one to the right side)
+// Divide the range of processors by 2 and call the function for the two halfs.
+// If the number of processors are ODD, make left side with one more processor than the right side
+// and in the right side add Ghost processor, with him noone communicates.
+// So in each level of binary tree structure of the recursion there will be an extra communication(PARALLEL), which is in total ~logP communications.
+// ~ 2 * p + logP communications in total.
+// The interval is [l, r)
+void transpoeBinaryCommExchangeWithGhostProcessor(struct ProcData* procData, struct Variable2DArray* dataToSend, struct Variable2DArray* dataToReceive, int l, int r)
+{
+	// For interval with less or one processor returns. Or the processors which don't do any work here.
+	if (l >= r || r - l <= 1 || procData->rank < l || procData->rank >= r)
+		return;
+
+	// Divide the range by 2, if the range is ODD -> make a ghost processor, noone communicates with him but the communications become easyear.
+	int ghost = -1;
+	if ((r - l) % 2 == 1)
+	{
+		ghost = r;
+		++r;
+	}
+
+	int halfSize = (r - l) / 2;
+	int mid = l + halfSize;
+	int i, rankInLocalInterval, partner;
+
+	// Left side.
+	if (procData->rank >= l && procData->rank < mid)
+	{
+		rankInLocalInterval = procData->rank - l; // The index [0, ... , halfSize)
+		for (i = 0; i < halfSize; ++i)
+		{
+			// My partner when @i == 0 is with same @rankInLocalInterval as me.
+			partner = mid + (rankInLocalInterval + i) % halfSize;
+
+			if (partner != ghost)
+			{
+				//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
+				MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
+				MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			}
+		}
+	}
+	// Right side.
+	else if (procData->rank >= mid && procData->rank < r) // It's only this processors ranks left..
+	{
+		rankInLocalInterval = procData->rank - mid; // The index [0, ... , halfSize)
+		for (i = 0; i < halfSize; ++i)
+		{
+			// My partner when @i == 0 is with same @rankInLocalInterval as me.
+			partner = l + (halfSize + rankInLocalInterval - i) % halfSize;
+
+			if (partner != ghost)
+			{
+				//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
+				MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
+			}
+		}
+	}
+
+	if (ghost > -1)
+		--r; // execute the transposing for the left side and th right side but without the ghoust processor.
+
+	transpoeBinaryCommExchangeWithGhostProcessor(procData, dataToSend, dataToReceive, l, mid); // Exchange info between Left half processors of the given interval
+	transpoeBinaryCommExchangeWithGhostProcessor(procData, dataToSend, dataToReceive, mid, r); // And the right half. NOTE: if there was extra one, it will exchange with all of them and no need to exchange again...
 }
 
 // Transpose the matrix over each processor.
@@ -506,7 +572,7 @@ void transposeBinaryComm(struct ProcData* procData)
 		}
 	}
 
-	transpoeBInaryCommExchange(procData, &dataToSend, &dataToReceive, 0, procData->p);
+	transpoeBinaryCommExchangeWithGhostProcessor(procData, &dataToSend, &dataToReceive, 0, procData->p);
 
 	// Now lets create the new data of processor procData->rank.
 	procData->M = newM;
