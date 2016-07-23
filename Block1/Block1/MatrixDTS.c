@@ -775,11 +775,12 @@ int functionalityDTS(struct ProcData * procData, int ROWS, int COLS, int outputi
 			matrixPrintTransposed(&matrixToReceive);
 		}
 
+		t2 = MPI_Wtime();
+		*tSum += t2 - t1;
+
 		// Compare and check if the received one is correct.
 		int res = matrixCompareWithOtherMatrix(&matrixToSend, &matrixToReceive);
 
-		t2 = MPI_Wtime();
-		*tSum += t2 - t1;
 		matrixFree(&matrixToReceive);
 		matrixFree(&matrixToSend);
 		return res;
