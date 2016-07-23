@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include "mpi.h"
 #include "MatrixDTS.h"
 
@@ -361,7 +362,6 @@ void transpose(struct ProcData* procData)
 	double * pProcData = procData->columnsData; // For iteration on columnsData.
 
 	// Fill the data in the new memory
-	int idx;
 	int columnsItHolds = procData->dataCount / procData->N;
 	for (i = 0; i < columnsItHolds; ++i) // For each column it hold(in not transposed row it hold)
 	{
@@ -499,12 +499,12 @@ void transpoeBinaryCommExchangeWithGhostProcessor(struct ProcData* procData, str
 		{
 			// My partner when @i == 0 is with same @rankInLocalInterval as me.
 			partner = l + (halfSize + rankInLocalInterval - i) % halfSize;
-
-			if (partner != ghost)
+			if (procData->rank != ghost) // Ghost might be -1 , so I cant put it to els if condition
 			{
 				//printf("In stage %d - rocessord %d tries to exchange with processor %d\n", i, procData->rank, partner);
 				MPI_Recv(dataToReceive->arrayData[partner], dataToReceive->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 				MPI_Send(dataToSend->arrayData[partner], dataToSend->rowSizes[partner], MPI_DOUBLE, partner, 42, MPI_COMM_WORLD);
+
 			}
 		}
 	}
@@ -573,6 +573,7 @@ void transposeBinaryComm(struct ProcData* procData)
 	}
 
 	transpoeBinaryCommExchangeWithGhostProcessor(procData, &dataToSend, &dataToReceive, 0, procData->p);
+//	transpoeBinaryCommExchange(procData, &dataToSend, &dataToReceive, 0, procData->p);
 
 	// Now lets create the new data of processor procData->rank.
 	procData->M = newM;
@@ -592,7 +593,6 @@ void transposeBinaryComm(struct ProcData* procData)
 	double * pProcData = procData->columnsData; // For iteration on columnsData.
 
 	// Fill the data in the new memory
-	int idx;
 	int columnsItHolds = procData->dataCount / procData->N;
 	for (i = 0; i < columnsItHolds; ++i) // For each column it hold(in not transposed row it hold)
 	{
@@ -696,7 +696,6 @@ void transposeCyclicly(struct ProcData* procData)
 	double * pProcData = procData->columnsData; // For iteration on columnsData.
 
 	// Fill the data in the new memory
-	int idx;
 	int columnsItHolds = procData->dataCount / procData->N;
 	for (i = 0; i < columnsItHolds; ++i) // For each column it hold(in not transposed row it hold)
 	{

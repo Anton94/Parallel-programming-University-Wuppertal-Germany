@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "mpi.h"
 #include "TwoDimArrays.h"
 #include "ProcessorUtilities.h"

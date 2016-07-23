@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 #include "mpi.h"
 #include "GaussianElimination.h"
@@ -41,7 +42,7 @@ void swap(double *a, double *b)
 // TODO: Broadcast the pivot index and the multipliers at the same time.
 void gaussianElimination(struct ProcData* procData)
 {
-	int k, j, i, kPlusOne,
+	int k, i, kPlusOne,
 		pivotIndex,
 		mineColumnIndex,
 		root;

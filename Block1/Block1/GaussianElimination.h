@@ -29,7 +29,7 @@
 // Aij = (i + j)/n * sin[(i*j*pi)/(n + 1)]
 // And for the B part of (A|B) (transposed, so, it's columns are the rows: N+1..M(M=N+Q))
 // Bij = i + j
-double getGEEntryValue(struct ProcData * procData, int i, int j);
+double getGEEntryValue(struct Matrix * matrix, int i, int j);
 
 // Execute kji column pivoting parallel Gaussian elimination
 void gaussianElimination(struct ProcData* procData);

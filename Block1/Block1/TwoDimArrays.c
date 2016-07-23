@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 #include "TwoDimArrays.h"
 
@@ -149,12 +150,12 @@ int matrixCompareWithOtherMatrix(const struct Matrix * matrixOne, const struct M
 	if (matrixOne->M != matrixTwo->N || matrixOne->N != matrixTwo->M)
 		return 0;
 	int i, j;
-	float epsilon = 0.000000001;
+	double epsilon = 0.000000001;
 	for (i = 0; i < matrixOne->M; ++i)
 	{
 		for (j = 0; j < matrixOne->N; ++j)
 		{
-			if (!abs(matrixOne->matrixData[i][j] - matrixTwo->matrixData[j][i]) < epsilon)
+			if (!fabs(matrixOne->matrixData[i][j] - matrixTwo->matrixData[j][i]) < epsilon)
 				return 0;
 		}
 	}
